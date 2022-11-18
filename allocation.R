@@ -52,3 +52,5 @@ allocate <- function(F, Q, alpha, dg, w, K, eps, Trace = FALSE) {
   }
   return(x)
 }
+
+
