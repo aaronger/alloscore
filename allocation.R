@@ -48,9 +48,55 @@ allocate <- function(F, Q, alpha, dg, w, K, eps, Trace = FALSE) {
     tau <- tau + 1
   }
   if (Trace) {
-    return(list(x = x, xs = xs, lambdas <- lam))
+    return(list(x = x, xs = xs, lambdas = lam))
   }
   return(x)
+}
+
+#' @param g gpl function
+#' @param Und loss (L) when outcome y exceeds forecast x; equals alpha*(Und + Ovg)
+#' @param Ovg cost (C) when forecast x exceeds outcome y; equals (1-alpha)*(Und + Ovg)
+#' @return function giving loss 
+gpl_loss_fun <- function(
+    g = function(u) u, 
+    Und, 
+    Ovg,
+    alpha,
+    scale = 1,
+    const = 0) {
+  if (!xor(is_missing(Und), is_missing(alpha))) {
+    stop("Either Und or alpha must be specified, but not both")
+  }
+  if (!is_missing(Und)) {
+    if (is_missing(Ovg)) {
+      Ovg <- 1 - Und
+    }
+    return(
+      function(x, y) {
+        scale*(Ovg*pmax(g(x) - g(y), 0) + Und*pmax(g(y) - g(x),0)) + const
+      }
+    )
+  }
+  if (!is_missing(alpha)) {
+    return(
+      function(x, y) {
+        scale*((1-alpha)*pmax(g(x) - g(y), 0) + alpha*pmax(g(y) - g(x),0)) + const
+      }
+    )
+  }
+}
+
+gpl_loss_exp_fun <- function(..., gpl_loss = NULL, f) {
+  if (is.null(gpl_loss)) {
+    gpl_loss <- gpl_loss_fun(...)
+  }
+  Z <- function(x) {
+    map_dbl(x, function(.x)
+      integrate(
+        f = function(y) gpl_loss(.x, y) * f(y), lower = -Inf, upper = Inf
+      )$value)
+  }
+  return(Z)
 }
 
 
