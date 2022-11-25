@@ -1,40 +1,68 @@
-library(purrr)
-library(rlang)
-
-#' @importFrom purrr runif
-#' @importFrom utils head tail
+#' @importFrom purrr map map2 pmap
+#' @importFrom rlang exec is_missing
 NULL
 
+#' Convert newsvendor parameters to kappa, alpha
+#'
+#' @param ax
+#' @param ay
+#' @param a_minus
+#' @param a_plus
+#'
+#' @return kappa and alpha as list
+#' @export
+#'
+#' @examples
 stdize_news_params <- function(ax, ay, a_minus, a_plus) {
   return(list(
-    kappa = a_plus + a_minus, 
+    kappa = a_plus + a_minus,
     alpha = (a_minus - ax)/(a_plus + a_minus)
-    ))
+  ))
 }
 
+#' Convert over/underprediction parameters to kappa, alpha
+#'
+#' @param O
+#' @param U
+#'
+#' @return kappa and alpha as list
+#' @export
+#'
+#' @examples
 stdize_ou_params <- function(O, U) {
   return(list(
-    kappa = O + U, 
+    kappa = O + U,
     alpha = U/(O+U)
   ))
 }
 
+#' Convert meteorologist parameters to kappa, alpha
+#'
+#' @param C
+#' @param L
+#'
+#' @return kappa and alpha as list
+#' @export
+#'
+#' @examples
 stdize_met_params <- function(C, L) {
   return(list(
-    kappa = L, 
+    kappa = L,
     alpha = 1-C/L
   ))
 }
 
+#' Create gpl scoring/loss function
+#'
 #' @param g gpl function
 #' @param kappa scale factor
 #' @param alpha normalized loss when outcome y exceeds forecast x
 #' @param U loss when outcome y exceeds forecast x; equals kappa*alpha
 #' @param O cost when forecast x exceeds outcome y; equals kappa*(1-alpha)
-#' @return function giving loss 
+#' @return function giving loss
 #' @export
 gpl_loss_fun <- function(
-    g = function(u) u, 
+    g = function(u) u,
     kappa = 1,
     alpha,
     O,
@@ -59,6 +87,8 @@ gpl_loss_fun <- function(
   }
 }
 
+#' Create gpl expected loss function
+#'
 #' @param ... passed to gpl_loss_fun
 #' @param gpl_loss specified loss function if ... missing
 #' @param f probability density
@@ -76,18 +106,18 @@ gpl_loss_exp_fun <- function(..., gpl_loss = NULL, f) {
   return(Z)
 }
 
-#' Allocate to minimize expected gpl loss under forecasts F with constraint K 
+#' Allocate to minimize expected gpl loss under forecasts F with constraint K
 #'
 #' @param F
-#' @param Q 
-#' @param kappa 
-#' @param alpha 
-#' @param dg 
-#' @param w 
-#' @param K 
-#' @param eps_K 
-#' @param eps_lam 
-#' @param Trace 
+#' @param Q
+#' @param kappa
+#' @param alpha
+#' @param dg
+#' @param w
+#' @param K
+#' @param eps_K
+#' @param eps_lam
+#' @param Trace
 #'
 #' @return
 #' @export

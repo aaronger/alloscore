@@ -1,0 +1,32 @@
+---
+output: github_document
+---
+
+<!-- README.md is generated from README.Rmd. Please edit that file -->
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  fig.path = "man/figures/README-",
+  out.width = "100%"
+)
+```
+
+# alloscore
+
+<!-- badges: start -->
+<!-- badges: end -->
+
+The goal of alloscore is to implement scoring functions and rules for vector forecasts using Bayes acts defined by scalar gpl loss functions and resource constraints.
+
+
+## Installation
+
+You can install it from [GitHub](https://github.com/) with:
+
+``` r
+# install.packages("devtools")
+devtools::install_github("aaronger/alloscore")
+```
+
