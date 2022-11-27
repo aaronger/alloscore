@@ -1,56 +1,115 @@
 library(tidyverse)
 
-zxh1 <- read_csv("zxh1.csv") 
+(zxh_norm_ex <- zxh_tab2 %>% as_tibble() %>%  mutate(
+  F = pmap(., function(mu, sigma, ...){function(x) {pnorm(x, mean = mu, sd = sigma)}}),
+  f = pmap(., function(mu, sigma, ...){function(x) {dnorm(x, mean = mu, sd = sigma)}}),
+  Q = pmap(., function(mu, sigma, ...){function(a) {qnorm(a, mean = mu, sd = sigma)}}),
+  stdize_news_params(ax = c, a_minus = v, a_plus = h),
+  q = map2_dbl(Q, alpha, exec),
+  allo = allocate(
+    F = F,
+    Q = Q,
+    kappa = kappa,
+    alpha = alpha,
+    w = c,
+    dg = 1,
+    K = 2500,
+    eps_K = .00001,
+    eps_lam = .00001
+  )))
 
-zxh <- zxh1 %>% mutate(
-  F = pmap(list(mu, sigma), function(mu,sigma) {function(x) {pnorm(x, mean = mu, sd = sigma)}}),
-  f = pmap(list(mu, sigma), function(mu,sigma) {function(x) {dnorm(x, mean = mu, sd = sigma)}}),
-  Q = pmap(list(mu, sigma), function(mu,sigma) {function(a) {qnorm(a, mean = mu, sd = sigma)}}),
-  kaparams = pmap(list(c,h,v), 
-                  function(c,h,v) stdize_news_params(ax = c, a_minus = v, a_plus = h))
-  ) %>% unnest_wider(kaparams) %>% 
-  mutate(
-    q = map2_dbl(Q, alpha, exec),
-    gpl_exp_loss = pmap(list(kappa, alpha, c, mu, f),
-                        function(kappa, alpha, c, mu, f) {
-                          gpl_loss_exp_fun(
-                            kappa = kappa,
-                            alpha = alpha,
-                            const = c*mu,
-                            f = f)
-                        }
-    )
-  )
-
-zxh <- within(zxh, allo <- allocate(
+zxh_norm_ex_long <- with(zxh_norm_ex, allocate(
   F = F,
   Q = Q,
   kappa = kappa,
   alpha = alpha,
   w = c,
   dg = 1,
-  K = 2500, 
-  eps_K = .001,
-  eps_lam = .01
-))
-
-zxh_long <- with(zxh, allocate(
-  F = F,
-  Q = Q,
-  kappa = kappa,
-  alpha = alpha,
-  w = c,
-  dg = 1,
-  K = 2500, 
-  eps_K = .001,
-  eps_lam = .01,
+  K = 2500,
+  eps_K = .00001,
+  eps_lam = .0001,
   Trace = TRUE
 ))
 
-zxh <- zxh %>% mutate(
+zxh_norm_ex <- zxh_norm_ex %>% mutate(
+  gpl_loss = pmap(., function(kappa,alpha,mu,c, ...) {
+    gpl_loss_fun(
+    kappa = kappa,
+    alpha = alpha,
+    const = c*mu
+    )}
+    )) %>% mutate(
+  gpl_exp_loss = pmap(., function(gpl_loss, f, ...) {
+    gpl_loss_exp_fun(gpl_loss = gpl_loss, f = f)
+  }),
   Z_Opt = map2_dbl(gpl_exp_loss, Opt, exec),
   Z_allo = map2_dbl(gpl_exp_loss, allo, exec)
 )
 
-zxh %>% summarise(Z_Opt = sum(Z_Opt), Z_allo = sum(Z_allo))
+zxh_norm_ex %>% summarise(
+  Z_Opt = sum(Z_Opt),
+  Z_allo = sum(Z_allo),
+  cost_zxh = sum(c*Opt),
+  cost_allo= sum(c*allo)
+  ) %>% pivot_longer(everything()) %>%
+  as.data.frame()
+
+zxh_tab3 <- read.csv("zxh1.csv")
+
+(zxh_beta_ex <- zxh_tab3 %>% as_tibble() %>%  mutate(
+  F = pmap(., function(x_min, x_max, Balpha, Bbeta, ...){
+    function(x) {pbeta((x-x_min)/(x_max-x_min), shape1 = Balpha, shape2 = Bbeta)}}),
+  f = pmap(., function(x_min, x_max, Balpha, Bbeta, ...){
+    function(x) {dbeta((x-x_min)/(x_max-x_min), shape1 = Balpha, shape2 = Bbeta)}}),
+  Q = pmap(., function(x_min, x_max, Balpha, Bbeta, ...){
+    function(a) {x_min + (x_max-x_min)*qbeta(a, shape1 = Balpha, shape2 = Bbeta)}}),
+  stdize_news_params(ax = c, a_minus = v, a_plus = h),
+  q = map2_dbl(Q, alpha, exec),
+  allo = allocate(
+    F = F,
+    Q = Q,
+    kappa = kappa,
+    alpha = alpha,
+    w = c,
+    dg = 1,
+    K = 6500,
+    eps_K = .00001,
+    eps_lam = .00001
+  )))
+
+zxh_beta_ex_long <- with(zxh_beta_ex, allocate(
+  F = F,
+  Q = Q,
+  kappa = kappa,
+  alpha = alpha,
+  w = c,
+  dg = 1,
+  K = 6500,
+  eps_K = .000001,
+  eps_lam = .000001,
+  Trace = TRUE
+))
+
+zxh_beta_ex <- zxh_beta_ex %>% mutate(
+  gpl_loss = pmap(., function(kappa,alpha,Balpha, Bbeta,c, ...) {
+    gpl_loss_fun(
+      kappa = kappa,
+      alpha = alpha,
+      const = c*(Balpha)/(Balpha + Bbeta)
+    )}),
+  gpl_exp_loss = pmap(., function(gpl_loss, f, ...) {
+    gpl_loss_exp_fun(gpl_loss = gpl_loss, f = f)
+  }),
+  Z_Opt = map2_dbl(gpl_exp_loss, Opt, exec),
+  Z_allo = map2_dbl(gpl_exp_loss, allo, exec)
+)
+
+zxh_beta_ex %>% summarise(
+  Z_Opt = sum(Z_Opt),
+  Z_allo = sum(Z_allo),
+  cost_zxh = sum(c*Opt),
+  cost_allo= sum(c*allo)
+  ) %>% pivot_longer(everything()) %>%
+  as.data.frame()
+
 

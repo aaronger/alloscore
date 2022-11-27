@@ -4,7 +4,9 @@
 \alias{gpl_loss_fun}
 \title{Create gpl scoring/loss function}
 \usage{
-gpl_loss_fun(g = function(u) u, kappa = 1, alpha, O, U, const = 0)
+gpl_loss_fun(g = function(u) {
+    u
+}, kappa = 1, alpha, O, U, const = 0)
 }
 \arguments{
 \item{g}{gpl function}

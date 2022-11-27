@@ -4,9 +4,11 @@
 \alias{stdize_news_params}
 \title{Convert newsvendor parameters to kappa, alpha}
 \usage{
-stdize_news_params(ax, ay, a_minus, a_plus)
+stdize_news_params(ax, ay = NULL, a_minus, a_plus)
 }
 \arguments{
+\item{ax}{wholesale cost}
+
 \item{a_plus}{}
 }
 \value{

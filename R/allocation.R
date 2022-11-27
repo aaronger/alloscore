@@ -2,9 +2,13 @@
 #' @importFrom rlang exec is_missing
 NULL
 
+add_pdqr_funs <- function(df, cols_to_params, dists) {
+
+}
+
 #' Convert newsvendor parameters to kappa, alpha
 #'
-#' @param ax
+#' @param ax wholesale cost
 #' @param ay
 #' @param a_minus
 #' @param a_plus
@@ -13,10 +17,10 @@ NULL
 #' @export
 #'
 #' @examples
-stdize_news_params <- function(ax, ay, a_minus, a_plus) {
-  return(list(
-    kappa = a_plus + a_minus,
-    alpha = (a_minus - ax)/(a_plus + a_minus)
+stdize_news_params <- function(ax, ay = NULL, a_minus, a_plus) {
+  return(data.frame(
+    kappa = as.double(a_plus + a_minus),
+    alpha = (a_minus - ax) / (a_plus + a_minus)
   ))
 }
 
@@ -30,7 +34,7 @@ stdize_news_params <- function(ax, ay, a_minus, a_plus) {
 #'
 #' @examples
 stdize_ou_params <- function(O, U) {
-  return(list(
+  return(data.frame(
     kappa = O + U,
     alpha = U/(O+U)
   ))
@@ -46,7 +50,7 @@ stdize_ou_params <- function(O, U) {
 #'
 #' @examples
 stdize_met_params <- function(C, L) {
-  return(list(
+  return(data.frame(
     kappa = L,
     alpha = 1-C/L
   ))
@@ -61,30 +65,21 @@ stdize_met_params <- function(C, L) {
 #' @param O cost when forecast x exceeds outcome y; equals kappa*(1-alpha)
 #' @return function giving loss
 #' @export
-gpl_loss_fun <- function(
-    g = function(u) u,
-    kappa = 1,
-    alpha,
-    O,
-    U,
-    const = 0) {
+gpl_loss_fun <- function(g = function(u) {u}, kappa = 1, alpha, O, U, const = 0) {
   if (!xor(is_missing(U), is_missing(alpha))) {
     stop("Either U or alpha must be specified, but not both")
   }
   if (!is_missing(U)) {
-    return(
-      function(x, y) {
-        scale*(O*pmax(g(x) - g(y), 0) + U*pmax(g(y) - g(x),0)) + const
-      }
-    )
+    gpl_loss <- function(x, y) {
+      scale * (O * pmax(g(x) - g(y), 0) + U * pmax(g(y) - g(x), 0)) + const
+    }
   }
   if (!is_missing(alpha)) {
-    return(
-      function(x, y) {
-        kappa*((1-alpha)*pmax(g(x) - g(y), 0) + alpha*pmax(g(y) - g(x),0)) + const
-      }
-    )
+    gpl_loss <- function(x, y) {
+      kappa * ((1 - alpha) * pmax(g(x) - g(y), 0) + alpha * pmax(g(y) - g(x), 0)) + const
+    }
   }
+  return(gpl_loss)
 }
 
 #' Create gpl expected loss function
