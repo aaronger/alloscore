@@ -1,5 +1,25 @@
-library(tidyverse)
+---
+title: "zxh_demo"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{zxh_demo}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
 
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>"
+)
+```
+
+```{r setup}
+library(tidyverse)
+library(alloscore)
+```
+
+```{r}
 (zxh_norm_ex <- zxh_tab2 %>% as_tibble() %>%  mutate(
   F = pmap(., function(mu, sigma, ...){function(x) {pnorm(x, mean = mu, sd = sigma)}}),
   f = pmap(., function(mu, sigma, ...){function(x) {dnorm(x, mean = mu, sd = sigma)}}),
@@ -17,7 +37,9 @@ library(tidyverse)
     eps_K = .00001,
     eps_lam = .00001
   )))
+```
 
+```{r}
 zxh_norm_ex_long <- with(zxh_norm_ex, allocate(
   F = F,
   Q = Q,
@@ -30,7 +52,9 @@ zxh_norm_ex_long <- with(zxh_norm_ex, allocate(
   eps_lam = .0001,
   Trace = TRUE
 ))
+```
 
+```{r}
 zxh_norm_ex <- zxh_norm_ex %>% mutate(
   gpl_loss = pmap(., function(kappa,alpha,mu,c, ...) {
     gpl_loss_fun(
@@ -45,7 +69,9 @@ zxh_norm_ex <- zxh_norm_ex %>% mutate(
   Z_Opt = map2_dbl(gpl_exp_loss, Opt, exec),
   Z_allo = map2_dbl(gpl_exp_loss, allo, exec)
 )
+```
 
+```{r}
 zxh_norm_ex %>% summarise(
   Z_Opt = sum(Z_Opt),
   Z_allo = sum(Z_allo),
@@ -53,9 +79,9 @@ zxh_norm_ex %>% summarise(
   cost_allo= sum(c*allo)
   ) %>% pivot_longer(everything()) %>%
   as.data.frame()
+```
 
-zxh_tab3 <- read.csv("zxh1.csv")
-
+```{r}
 (zxh_beta_ex <- zxh_tab3 %>% as_tibble() %>%  mutate(
   F = pmap(., function(x_min, x_max, Balpha, Bbeta, ...){
     function(x) {pbeta((x-x_min)/(x_max-x_min), shape1 = Balpha, shape2 = Bbeta)}}),
@@ -85,8 +111,8 @@ zxh_beta_ex_long <- with(zxh_beta_ex, allocate(
   w = c,
   dg = 1,
   K = 6500,
-  eps_K = .000001,
-  eps_lam = .000001,
+  eps_K = .00001,
+  eps_lam = .00001,
   Trace = TRUE
 ))
 
@@ -96,7 +122,7 @@ zxh_beta_ex <- zxh_beta_ex %>% mutate(
       kappa = kappa,
       alpha = alpha,
       const = c*(Balpha)/(Balpha + Bbeta)
-    )}),
+    )})) %>% mutate(
   gpl_exp_loss = pmap(., function(gpl_loss, f, ...) {
     gpl_loss_exp_fun(gpl_loss = gpl_loss, f = f)
   }),
@@ -111,5 +137,5 @@ zxh_beta_ex %>% summarise(
   cost_allo= sum(c*allo)
   ) %>% pivot_longer(everything()) %>%
   as.data.frame()
-
+```
 

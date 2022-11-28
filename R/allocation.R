@@ -2,9 +2,15 @@
 #' @importFrom rlang exec is_missing
 NULL
 
-add_pdqr_funs <- function(df, cols_to_params, dists) {
-
-}
+# add_pdqr_funs <- function(df, target_col, param_cols, dists) {
+#   df %>% group_by(target_col) %>% mutate(
+#     F = pmap(list(!!!param_cols, dists),
+#              function(...)) {
+#
+#       function(x) dist(x, )
+#     })
+#   )
+# }
 
 #' Convert newsvendor parameters to kappa, alpha
 #'

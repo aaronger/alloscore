@@ -4,3 +4,4 @@
 .httr-oauth
 .DS_Store
 allocation_scratch.R
+inst/doc
