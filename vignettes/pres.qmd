@@ -1,0 +1,153 @@
+---
+title: "alloscore talk"
+format: 
+  revealjs:
+    width: 1500
+editor: visual
+---
+
+## Motivation
+
+Gov to allocate scarce hospital supplies across 50 states
+
+-   given many (probabilistic) forecasts of need, which should they use?
+
+Raises question: how will chosen forecast be used?
+
+One possibility: to minimize $E_F \sum_{l=1}^{50} \max(0, Y_i - x_i)$
+
+-   $Y_{1:50} \sim F$ are future needs ($F$ unknown)
+-   $x_{1:50}$ are allocated quantities
+-   only $K$ units of supplies are available
+
+## A constrained stochastic optimization problem
+
+Let $Z_F(\mathbf{x}) = E_F \sum \max(0, Y_i - x_i)$
+
+Lagrange multiplier equation: $\nabla Z(\mathbf{x}) + \lambda =0$
+
+$$
+\frac{d}{dx_i}E_F \max(0, Y_i - x_i) = \frac{d}{dx_i}\int_{x_i}^{\infty} (y - x_i)f_i(y)dy = F_i(x_i)-1 = -\lambda\\
+x_i = F_i^{-1}(1-\lambda)
+$$ Solve $\sum_{l=1}^{50} F_i^{-1}(1-\lambda) = K$ for $\lambda^{\star} \in (0,1)$ to get best allocation $x_i^{\star} = F_i^{-1}(1-\lambda^{\star})$
+
+## Solution for location-scale family $F_i$'s
+
+$$
+\sum F_i^{-1}(1-\lambda) = \sum \mu_i + \sigma_i \Phi^{-1}(1-\lambda )= K \\
+\implies \lambda^{\star} = 1 - \Phi\left(\frac{K-\sum \mu_j}{\sum \sigma_j}\right) \\
+\implies x_i^{\star} = 
+F_i^{-1}\circ\Phi\left(\frac{K-\sum \mu_j}{\sum \sigma_j}\right)
+=\mu_i+\sigma_i\left(\frac{K-\sum \mu_j}{\sum \sigma_j}\right)
+$$
+
+Interpretation: underdispersion at loc $i$ -\> too little of "excess or shortage in mean" $K-\sum \mu_j$ given to or removed from $i$
+
+## Allocation as forecast perfomance
+
+$\mathbf{x}_F^{\star}$ is a **Bayes act** for $F$ under loss $$
+s(\mathbf{x}, \mathbf{y}) = \sum \max(0,y_i - x_i)
+$$ The quality of forecast $F$ then can be estimated by how much loss using it actually incurs, i.e., $$
+S(\mathbf{F}, \mathbf{y}) = \sum \max(0,y_i - x_{F,i}^{\star})
+$$
+
+-   or perhaps $S(\mathbf{F}, \mathbf{y}) - \max(0, \sum y_i-K)$, perfomance against an oracle
+
+## Scoring function for LS case
+
+$$
+s_K(\mathbf{Q}, \mathbf{y})=\sum \mathbb{1}\left\{\frac{K-\sum \mu_i}{\sum \sigma_i} \leq \frac{y_i-\mu_i}{\sigma_i}\right\}\left(y_i-x_{F,i}^{\star}\right)
+$$
+
+## Scoring Functions in general
+
+Forecaster $A$ asked to estimate a **functional** $T(F_Y)$ for a RV $Y\sim F_Y$.
+
+-   mean, median, variance, etc.
+-   $A$ believes that $Y \sim F$
+
+After $A$ gives us $x$ and nature realizes $Y=y$, we judge performance with a **scoring function** $s(x,y)$
+
+$s$ is **(strictly) consistent** for $T$ if$A$ cannot expect to do better than offer $x=T(F)$ as a forecast of $T(F_Y)$, i.e,
+
+$$
+E_F[s(T(F)),Y] (<) \leq E_F[s(x,Y)] \text{ for all } F,x
+$$
+
+## Elicitability
+
+A functional is **elicitable** if it has a strictly consistent scoring function.
+
+Basic example are $\alpha$ quantiles, with SF:
+
+$$
+\begin{aligned}
+s(x, y)=s_{O, U}(x, y) &=O(g(x)-g(y))_{+}+U(g(x)-g(y))_{-} . \\
+&=\kappa\left((1-\alpha)(g(x)-g(y))_{+}+\alpha(g(x)-g(y))_{-}\right) \\
+&=\kappa(\mathbb{1}\{x>y\}-\alpha)(g(x)-g(y)) \\
+&:=s_{\kappa, \alpha}(x, y):=\kappa s_\alpha(x, y)
+\end{aligned}
+$$
+
+$\alpha=U /(U+O), \kappa = O+U$
+
+## Reformulation of allocation problem
+
+Hosp allocation problem of this form in each location, with $O_i=0, U_i=1$
+
+With constraint $x \leq K$ Bayes act is just $Q=\min(K,F^{-1} (U/(U+O)))=K$
+
+But taken jointly, have non-trivial BA $Q_i = F_i^{-1}\left(\alpha_i\left(1-\lambda_K / U_i\right)\right)$ or(!) 0
+
+-   $\lambda_K =0$ corresponds to case when $\sum Q_i(\alpha_i) \leq K$
+
+## Domain versions
+
+### Newsvendor problem
+
+Ordering decision faced by a retailer of a perishable good (such as newspapers) when customer demand is uncertain.
+
+-   Allocation problem appears as **multi-product NVP with stocking constraint**
+-   Well-studied in OR literature
+
+### Meteoroligist/Epidemiologist Cost/Loss Problem
+
+-   have not seen much in allocation form
+
+No literature regarding allocation solution as scoring rule
+
+## Solving Allocation Problem
+
+Straightforward in simple situations
+
+-   all $F_i$ smooth with same support starting at 0
+-   $K$ not too much smaller than $\mathbf{w}^T \mathbf{Q}(\alpha)$
+
+$$
+\nabla Z(\mathbf{x}) + \lambda \mathbf{w} =0 \\
+\implies \kappa_i(F_i(Q_i) - \alpha) + \lambda w_i = 0 \\
+\implies Q_i(\lambda) = F_i^{-1}(\alpha_i(1 - \lambda w_i / U_i))
+$$
+
+Now solve $\sum_{i=1}^N w_i Q_i(\lambda)=K$ for $\lambda^{\star}$ to get optimal allocation $\mathbf{Q}(\lambda^{\star})$.
+
+## Complications
+
+If some $Q_i$ need to be 0, we don't know in general which set of 0's is best
+
+-   problem becomes intractable for large $N$
+-   need a non-linear programming algorithm... `alloscore` implements one
+
+## Scoring Rules
+
+-   Should be regret-based, i.e., how well you do against an oracle that knows $y$'s and never wastes any resources
+
+## Next Steps
+
+-   Use Evan's package [`distfromq`](https://github.com/reichlab/distfromq) to interpolate quantile functions and distribtuions from hub quantile forecasts and score across $K$ range
+
+-   extend this to no overprediction penalty i.e. $\alpha_i = 1$ scenario
+
+## Aspirations
+
+-   Allocation skill could be an indicator for peak/outbreak detection skill
