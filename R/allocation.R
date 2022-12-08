@@ -1,66 +1,7 @@
-#' @importFrom purrr map map2 pmap
+#' @importFrom purrr map map2 pmap partial
 #' @importFrom rlang exec is_missing
+#' @importFrom dplyr mutate
 NULL
-
-# add_pdqr_funs <- function(df, target_col, param_cols, dists) {
-#   df %>% group_by(target_col) %>% mutate(
-#     F = pmap(list(!!!param_cols, dists),
-#              function(...)) {
-#
-#       function(x) dist(x, )
-#     })
-#   )
-# }
-
-#' Convert newsvendor parameters to kappa, alpha
-#'
-#' @param ax wholesale cost
-#' @param ay
-#' @param a_minus
-#' @param a_plus
-#'
-#' @return kappa and alpha as list
-#' @export
-#'
-#' @examples
-stdize_news_params <- function(ax, ay = NULL, a_minus, a_plus) {
-  return(data.frame(
-    kappa = as.double(a_plus + a_minus),
-    alpha = (a_minus - ax) / (a_plus + a_minus)
-  ))
-}
-
-#' Convert over/underprediction parameters to kappa, alpha
-#'
-#' @param O
-#' @param U
-#'
-#' @return kappa and alpha as list
-#' @export
-#'
-#' @examples
-stdize_ou_params <- function(O, U) {
-  return(data.frame(
-    kappa = O + U,
-    alpha = U/(O+U)
-  ))
-}
-
-#' Convert meteorologist parameters to kappa, alpha
-#'
-#' @param C
-#' @param L
-#'
-#' @return kappa and alpha as list
-#' @export
-#'
-#' @examples
-stdize_met_params <- function(C, L) {
-  return(data.frame(
-    kappa = L,
-    alpha = 1-C/L
-  ))
-}
 
 #' Create gpl scoring/loss function
 #'
@@ -107,6 +48,24 @@ gpl_loss_exp_fun <- function(..., gpl_loss = NULL, f) {
   return(Z)
 }
 
+#' Marginal expected benefit
+#'
+#' @param kappa
+#' @param alpha
+#' @param w
+#' @param dg
+#'
+#' @return
+#' @export
+#'
+#' @examples
+margexb_fun <- function(F, kappa, alpha, w, dg = 1) {
+  if (!is_function(dg)) {
+    return(function(x) {w^(-1)*kappa*dg*(alpha - F(x))})
+    }
+  function(x) {w^(-1)*kappa*dg(x)*(alpha - F(x))}
+}
+
 #' Allocate to minimize expected gpl loss under forecasts F with constraint K
 #'
 #' @param F
@@ -118,13 +77,14 @@ gpl_loss_exp_fun <- function(..., gpl_loss = NULL, f) {
 #' @param K
 #' @param eps_K
 #' @param eps_lam
-#' @param Trace
+#' @param Trace logical, record iterations
 #'
 #' @return
 #' @export
 #'
 #' @examples
-allocate <- function(F, Q, kappa, alpha, dg, w, K, eps_K, eps_lam, Trace = FALSE) {
+allocate <- function(F, Q, kappa, alpha, dg = 1,
+                     w, K, eps_K, eps_lam, Trace = FALSE) {
   # validation
   largs <- list(F = F, Q = Q, kappa = kappa, alpha = alpha, dg = dg, w = w)
   N <-  max(map_int(largs, length))
@@ -138,12 +98,8 @@ allocate <- function(F, Q, kappa, alpha, dg, w, K, eps_K, eps_lam, Trace = FALSE
   if (any(!map_int(largs, length) == N)) {
     stop("parameter lists do not have matching lengths")
   }
-  # convert constants in dg to functions
-  largs$dg <- map(largs$dg, function(dg) {if (is_function(dg)) dg else function(x) dg})
-  # make lambda_i's
-  Lambda <- pmap(largs[names(largs) != "Q"], function(F, kappa, alpha, w, dg) {
-    function(xi) w^(-1)*kappa*dg(xi)*(alpha - F(xi))
-  })
+  # get lambda_i's
+  Lambda <- pmap(largs[names(largs) != "Q"], margexb_fun)
   # get quantiles or finite constraint violators if alpha_i = 1
   Q <- map2(Q, w, function(Q, w) {function(alpha) {min(Q(alpha), w^(-1)*2*K)}})
   x <- qs <- map2_dbl(Q, alpha, exec)

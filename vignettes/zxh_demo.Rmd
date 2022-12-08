@@ -3,8 +3,10 @@ title: "zxh_demo"
 output: rmarkdown::html_vignette
 vignette: >
   %\VignetteIndexEntry{zxh_demo}
-  %\VignetteEngine{knitr::rmarkdown}
   %\VignetteEncoding{UTF-8}
+  %\VignetteEngine{knitr::rmarkdown}
+editor_options: 
+  chunk_output_type: console
 ---
 
 ```{r, include = FALSE}
@@ -20,23 +22,29 @@ library(alloscore)
 ```
 
 ```{r}
-(zxh_norm_ex <- zxh_tab2 %>% as_tibble() %>%  mutate(
-  F = pmap(., function(mu, sigma, ...){function(x) {pnorm(x, mean = mu, sd = sigma)}}),
-  f = pmap(., function(mu, sigma, ...){function(x) {dnorm(x, mean = mu, sd = sigma)}}),
-  Q = pmap(., function(mu, sigma, ...){function(a) {qnorm(a, mean = mu, sd = sigma)}}),
-  stdize_news_params(ax = c, a_minus = v, a_plus = h),
-  q = map2_dbl(Q, alpha, exec),
-  allo = allocate(
-    F = F,
-    Q = Q,
-    kappa = kappa,
-    alpha = alpha,
-    w = c,
-    dg = 1,
-    K = 2500,
-    eps_K = .00001,
-    eps_lam = .00001
-  )))
+(zxh_norm_ex <- zxh_tab2 %>% 
+   rename(mean = mu, sd = sigma) %>% 
+   add_pdqr_funs(dist = "norm") %>% 
+   mutate(
+     stdize_news_params(ax = c, a_minus = v, a_plus = h),
+     .after = c) %>% 
+   mutate(
+     q = map2_dbl(Q, alpha, exec), 
+     .after = q_zxh) %>% 
+   mutate(
+     allo = allocate(
+        F = F,
+        Q = Q,
+        kappa = kappa,
+        alpha = alpha,
+        w = c,
+        dg = 1,
+        K = 2500,
+        eps_K = .00001,
+        eps_lam = .00001
+      ), 
+     .after = Opt
+   ))
 ```
 
 ```{r}
@@ -56,11 +64,11 @@ zxh_norm_ex_long <- with(zxh_norm_ex, allocate(
 
 ```{r}
 zxh_norm_ex <- zxh_norm_ex %>% mutate(
-  gpl_loss = pmap(., function(kappa,alpha,mu,c, ...) {
+  gpl_loss = pmap(., function(kappa, alpha, mean, c, ...) {
     gpl_loss_fun(
     kappa = kappa,
     alpha = alpha,
-    const = c*mu
+    const = c*mean
     )}
     )) %>% mutate(
   gpl_exp_loss = pmap(., function(gpl_loss, f, ...) {
@@ -82,27 +90,36 @@ zxh_norm_ex %>% summarise(
 ```
 
 ```{r}
-(zxh_beta_ex <- zxh_tab3 %>% as_tibble() %>%  mutate(
-  F = pmap(., function(x_min, x_max, Balpha, Bbeta, ...){
-    function(x) {pbeta((x-x_min)/(x_max-x_min), shape1 = Balpha, shape2 = Bbeta)}}),
-  f = pmap(., function(x_min, x_max, Balpha, Bbeta, ...){
-    function(x) {dbeta((x-x_min)/(x_max-x_min), shape1 = Balpha, shape2 = Bbeta)}}),
-  Q = pmap(., function(x_min, x_max, Balpha, Bbeta, ...){
-    function(a) {x_min + (x_max-x_min)*qbeta(a, shape1 = Balpha, shape2 = Bbeta)}}),
-  stdize_news_params(ax = c, a_minus = v, a_plus = h),
-  q = map2_dbl(Q, alpha, exec),
-  allo = allocate(
-    F = F,
-    Q = Q,
-    kappa = kappa,
-    alpha = alpha,
-    w = c,
-    dg = 1,
-    K = 6500,
-    eps_K = .00001,
-    eps_lam = .00001
-  )))
+(zxh_beta_ex <- zxh_tab3 %>%
+   rename(shape1 = Balpha, shape2 = Bbeta) %>% 
+   add_pdqr_funs(
+     dist = "beta",
+     trans = function(x, x_min, x_max) {(x-x_min)/(x_max-x_min)},
+     trans_inv = function(q, x_min, x_max) {x_min + (x_max-x_min)*q}) %>% 
+   mutate(
+     stdize_news_params(ax = c, a_minus = v, a_plus = h),
+     .after = c) %>% 
+   mutate(
+     q = map2_dbl(Q, alpha, exec), 
+     .after = q_zxh) %>% 
+   mutate(
+     allo = allocate(
+       F = F,
+       Q = Q,
+       kappa = kappa,
+       alpha = alpha,
+       w = c,
+       dg = 1,
+       K = 6500,
+       eps_K = .00001,
+       eps_lam = .00001
+       ), 
+     .after = Opt
+     )
+ )
+```
 
+```{r}
 zxh_beta_ex_long <- with(zxh_beta_ex, allocate(
   F = F,
   Q = Q,
@@ -117,11 +134,11 @@ zxh_beta_ex_long <- with(zxh_beta_ex, allocate(
 ))
 
 zxh_beta_ex <- zxh_beta_ex %>% mutate(
-  gpl_loss = pmap(., function(kappa,alpha,Balpha, Bbeta,c, ...) {
+  gpl_loss = pmap(., function(kappa,alpha,shape1, shape2,c, ...) {
     gpl_loss_fun(
       kappa = kappa,
       alpha = alpha,
-      const = c*(Balpha)/(Balpha + Bbeta)
+      const = c*(shape1)/(shape1 + shape2)
     )})) %>% mutate(
   gpl_exp_loss = pmap(., function(gpl_loss, f, ...) {
     gpl_loss_exp_fun(gpl_loss = gpl_loss, f = f)
