@@ -59,11 +59,11 @@ gpl_loss_exp_fun <- function(..., gpl_loss = NULL, f) {
 #' @export
 #'
 #' @examples
-margexb_fun <- function(F, kappa, alpha, w, dg = 1) {
+margexb_fun <- function(F, kappa = 1, alpha, w, dg = 1, q_alpha = 1,...) {
   if (!is_function(dg)) {
-    return(function(x) {w^(-1)*kappa*dg*(alpha - F(x))})
+    return(function(x) {w^(-1)*kappa*dg*(alpha - F(x*q_alpha))})
     }
-  function(x) {w^(-1)*kappa*dg(x)*(alpha - F(x))}
+  function(x) {w^(-1)*kappa*dg(x*q_alpha)*(alpha - F(x*q_alpha))}
 }
 
 #' Allocate to minimize expected gpl loss under forecasts F with constraint K
@@ -83,7 +83,7 @@ margexb_fun <- function(F, kappa, alpha, w, dg = 1) {
 #' @export
 #'
 #' @examples
-allocate <- function(F, Q, kappa, alpha, dg = 1,
+allocate <- function(F, Q, kappa = 1, alpha, dg = 1,
                      w, K, eps_K, eps_lam, Trace = FALSE) {
   # validation
   largs <- list(F = F, Q = Q, kappa = kappa, alpha = alpha, dg = dg, w = w)

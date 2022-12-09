@@ -13,7 +13,13 @@ pdqr_factory(..., dist, type, trans = NULL, trans_inv = NULL, transpars = NULL)
 
 \item{type}{p, d, q, or r}
 
-\item{transpars}{}
+\item{trans}{function with arguments x for outcome and parameters for a transformation
+precomposed with pd functions.}
+
+\item{trans_inv}{inverse of trans with argument p for probability level; will be
+post-composed with qr function.}
+
+\item{transpars}{parameters for trans and trans_inv not included in columns of df}
 }
 \value{
 function of type p, d, q, or r

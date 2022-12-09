@@ -1,11 +1,9 @@
 #' Produce a pdqr function with set parameters
 #'
-#' @param ... list including named parameter values to be partialed out
+#' @param ... list of parameter name-value pairs to be partialed out
 #' @param dist distribution root name or `distfromq`
 #' @param type p, d, q, or r
-#' @param trans
-#' @param trans_inv
-#' @param transpars
+#' @inheritParams add_pdqr_funs
 #'
 #' @return function of type p, d, q, or r
 #' @export
@@ -14,7 +12,7 @@
 pdqr_factory <- function(..., dist, type,
                          trans = NULL, trans_inv = NULL,
                          transpars = NULL) {
-  pars <- list(...)
+  pars <- list(...) %>% .[!is.na(.)]
   if (dist == "distfromq") {
     funfac <- get(paste0("make_", type, "_fun"))
     selected_pars <- pars[intersect(names(formals(funfac)), names(pars))]

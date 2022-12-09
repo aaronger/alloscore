@@ -4,7 +4,7 @@
 \alias{allocate}
 \title{Allocate to minimize expected gpl loss under forecasts F with constraint K}
 \usage{
-allocate(F, Q, kappa, alpha, dg = 1, w, K, eps_K, eps_lam, Trace = FALSE)
+allocate(F, Q, kappa = 1, alpha, dg = 1, w, K, eps_K, eps_lam, Trace = FALSE)
 }
 \arguments{
 \item{Trace}{logical, record iterations}
