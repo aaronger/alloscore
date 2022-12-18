@@ -14,9 +14,9 @@ pdqr_factory <- function(..., dist, type,
                          transpars = NULL) {
   pars <- list(...) %>% .[!is.na(.)]
   if (dist == "distfromq") {
-    funfac <- get(paste0("make_", type, "_fun"))
+    funfac <- get(paste0("make_", type, "_fn"))
     selected_pars <- pars[intersect(names(formals(funfac)), names(pars))]
-    Fun <- funfac(!!!selected_pars)
+    Fun <- exec(funfac, !!!selected_pars)
   } else {
     statfun <- get(paste0(type, dist))
     selected_pars <- pars[intersect(names(formals(statfun)), names(pars))]
