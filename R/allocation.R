@@ -83,8 +83,10 @@ margexb_fun <- function(F, kappa = 1, alpha, w, dg = 1, q_alpha = 1,...) {
 #' @export
 #'
 #' @examples
-allocate <- function(F, Q, kappa = 1, alpha, dg = 1,
-                     w, K, eps_K, eps_lam, Trace = FALSE) {
+allocate <- function(F, Q, w, K,
+                     kappa = 1, alpha,
+                     dg = 1,
+                     eps_K, eps_lam, Trace = FALSE) {
   # validation
   largs <- list(F = F, Q = Q, kappa = kappa, alpha = alpha, dg = dg, w = w)
   N <-  max(map_int(largs, length))
@@ -158,4 +160,16 @@ allocate <- function(F, Q, kappa = 1, alpha, dg = 1,
   return(x)
 }
 
-
+alloscore <- function(y, F, Q, w, K,
+                      kappa = 1, alpha,
+                      dg = 1,
+                      eps_K, eps_lam,
+                      g,
+                      against_oracle = TRUE) {
+  allos <- allocate(F = F, Q = Q, w = w, K = K,
+                    kappa = kappa, alpha = alpha,
+                    dg = dg,
+                    eps_K = eps_K, eps_lam = eps_lam)
+  gpl <- gpl_loss_fun(g = g, kappa = kappa, alpha = alpha)
+  score <- gpl(allos, y)
+}

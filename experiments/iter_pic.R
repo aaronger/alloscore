@@ -1,5 +1,6 @@
 library(tidyverse)
 library(patchwork)
+library(alloscore)
 
 (dat <- tibble(
   alpha = c(.2,.6,.3,.9),
@@ -55,6 +56,7 @@ K_funfac <- function(df = dat_allo, forecasts = NULL) {
     sum(w * pmax(0, map2_dbl(Q, pmax(0, alpha-w*lambda), exec)))
   }))
 }
+K_fun <- K_funfac()
 
 ymax = .25
 n = nrow(dat_allo)
@@ -89,4 +91,4 @@ with(dat_allo,
 p1+p2
 })
 
-tibble(y = seq(0, .2, length.out = 10), x= K_funfac(forecasts = c(1))(y))
+#tibble(y = seq(0, .2, length.out = 10), x= K_funfac(forecasts = c(1))(y))
