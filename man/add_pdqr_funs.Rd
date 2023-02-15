@@ -2,7 +2,8 @@
 % Please edit documentation in R/utils.R
 \name{add_pdqr_funs}
 \alias{add_pdqr_funs}
-\title{Add columns for pdqr functions determined by parameter columns}
+\title{Add columns for pdqr functions (i.e., functions to evaluate the cdf, pdf, or
+quantile function, or to generate random deviates) determined by parameter columns}
 \usage{
 add_pdqr_funs(
   df,
@@ -38,5 +39,6 @@ post-composed with qr function.}
 a tibble with list columns containing selected pdqr functions
 }
 \description{
-Add columns for pdqr functions determined by parameter columns
+Add columns for pdqr functions (i.e., functions to evaluate the cdf, pdf, or
+quantile function, or to generate random deviates) determined by parameter columns
 }

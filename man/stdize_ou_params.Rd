@@ -7,7 +7,9 @@
 stdize_ou_params(O, U)
 }
 \arguments{
-\item{U}{}
+\item{O}{incremental loss that is incurred when overprediction leads to unused supply}
+
+\item{U}{incremental loss that is incurred when underprediction leads to unmet need}
 }
 \value{
 kappa and alpha as list

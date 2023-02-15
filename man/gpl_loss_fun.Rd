@@ -2,7 +2,8 @@
 % Please edit documentation in R/allocation.R
 \name{gpl_loss_fun}
 \alias{gpl_loss_fun}
-\title{Create gpl scoring/loss function}
+\title{Create generalized piecewise linear (gpl) scoring/loss function,
+which in general need not be piecewise linear}
 \usage{
 gpl_loss_fun(g = function(u) {
     u
@@ -20,8 +21,9 @@ gpl_loss_fun(g = function(u) {
 \item{U}{loss when outcome y exceeds forecast x; equals kappa*alpha}
 }
 \value{
-function giving loss
+function with arguments \code{x} and \code{y} giving loss
 }
 \description{
-Create gpl scoring/loss function
+Create generalized piecewise linear (gpl) scoring/loss function,
+which in general need not be piecewise linear
 }

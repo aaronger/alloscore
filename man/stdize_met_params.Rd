@@ -7,7 +7,9 @@
 stdize_met_params(C, L)
 }
 \arguments{
-\item{L}{}
+\item{C}{marginal cost per unit of recommended protection}
+
+\item{L}{marginal loss due to under-provision of needed resources}
 }
 \value{
 kappa and alpha as list

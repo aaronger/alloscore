@@ -13,6 +13,10 @@ gpl_loss_exp_fun(..., gpl_loss = NULL, f)
 
 \item{f}{probability density}
 }
+\value{
+function with argument x giving the expected loss with respect to the
+distribution f
+}
 \description{
 Create gpl expected loss function
 }

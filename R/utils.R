@@ -34,7 +34,8 @@ pdqr_factory <- function(..., dist, type,
   return(Fun)
 }
 
-#' Add columns for pdqr functions determined by parameter columns
+#' Add columns for pdqr functions (i.e., functions to evaluate the cdf, pdf, or
+#' quantile function, or to generate random deviates) determined by parameter columns
 #'
 #' @param df data frame; must have columns for each parameter required by any
 #'  of the distribution functions indicated in a column named `dist` provided directly
@@ -104,8 +105,8 @@ stdize_news_params <- function(ax, ay = NULL, a_minus, a_plus) {
 
 #' Convert over/underprediction parameters to kappa, alpha
 #'
-#' @param O
-#' @param U
+#' @param O incremental loss that is incurred when overprediction leads to unused supply
+#' @param U incremental loss that is incurred when underprediction leads to unmet need
 #'
 #' @return kappa and alpha as list
 #' @export
@@ -120,8 +121,8 @@ stdize_ou_params <- function(O, U) {
 
 #' Convert meteorologist parameters to kappa, alpha
 #'
-#' @param C
-#' @param L
+#' @param C marginal cost per unit of recommended protection
+#' @param L marginal loss due to under-provision of needed resources
 #'
 #' @return kappa and alpha as list
 #' @export
