@@ -171,7 +171,7 @@ allocate <- function(F, Q, w, K,
 
 #' Obtain the allocation score for a given forecast distribution F for the
 #' observed data value y in a constrained allocation problem.
-#' 
+#'
 #' @param y numeric observed data value
 #' @param g list of functions that calculate the gpl function for each coordinate
 #' @param against_oracle logical; if `TRUE`, scores are normalized relative to
@@ -181,13 +181,13 @@ alloscore <- function(y, F, Q, w, K,
                       kappa = 1, alpha,
                       dg = 1,
                       eps_K, eps_lam,
-                      g,
+                      g = function(u) u,
                       against_oracle = TRUE) {
   allos <- allocate(F = F, Q = Q, w = w, K = K,
                     kappa = kappa, alpha = alpha,
                     dg = dg,
                     eps_K = eps_K, eps_lam = eps_lam)
   gpl <- gpl_loss_fun(g = g, kappa = kappa, alpha = alpha)
-  score <- gpl(allos, y)
+  score <- sum(gpl(allos, y))
   return(score)
 }

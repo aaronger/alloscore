@@ -1,6 +1,7 @@
 library(tidyverse)
 library(patchwork)
-library(alloscore)
+library(devtools)
+load_all()
 
 (dat <- tibble(
   alpha = c(.2,.6,.3,.9),
@@ -8,8 +9,8 @@ library(alloscore)
   dists_and_params = list(
     list(dist = "norm", mean = 3, sd = 2),
     list(dist = "norm", mean = 7, sd = 9),
-    list(dist = "exp", rate = .3),
-    list(dist = "gamma", shape = 1, scale = 4)
+    list(dist = "exp", rate = .4),
+    list(dist = "gamma", shape = 1, rate = .3)
   ),
   name = map(dists_and_params,
              ~toString(paste0(.[["dist"]], ", ",
@@ -27,8 +28,8 @@ K=10
         alpha = alpha,
         w = w,
         K = K,
-        eps_K = .001,
-        eps_lam = .001
+        eps_K = .01,
+        eps_lam = .01
       )
     ) %>%
     relocate(allo)

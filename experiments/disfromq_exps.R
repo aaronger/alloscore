@@ -19,7 +19,7 @@ forecasts_hosp <- load_forecasts(
 
 fhosp1 <- forecasts_hosp %>% filter(
   model == "COVIDhub-ensemble",
-  horizon == 7,
+  horizon == 14,
   location < 57) %>% select(-type) %>%
   nest(ps = quantile, qs = value) %>%
   relocate(ps, qs) %>%
@@ -28,8 +28,31 @@ fhosp1 <- forecasts_hosp %>% filter(
     qs = map(qs, deframe)
     )
 
-fhosp1 <- fhosp1 %>% add_pdqr_funs(dist = "distfromq")
+fhosp1 <- fhosp1 %>% add_pdqr_funs(dist = "distfromq") %>%
+  relocate(dist, F, f, Q, r)
 
+truth <- load_truth(
+  truth_source = "HealthData",
+  target_variable = "inc hosp"
+)
+
+fhosp1 <- fhosp1 %>% left_join(
+  truth %>% select(location, target_end_date, value),
+  by = c("location", "target_end_date"))
+
+alloscores <- fhosp1 %>% summarise(as = alloscore(
+  y = value,
+  F = F,
+  Q= Q,
+  w = 1,
+  K = 2000,
+  kappa = 1,
+  alpha = .5,
+  dg = 1,
+  eps_K = .01,
+  eps_lam = .01,
+  against_oracle = FALSE
+))
 
 
 
