@@ -4,13 +4,35 @@
 \alias{allocate}
 \title{Allocate to minimize expected gpl loss under forecasts F with constraint K}
 \usage{
-allocate(F, Q, kappa = 1, alpha, dg = 1, w, K, eps_K, eps_lam, Trace = FALSE)
+allocate(F, Q, w, K, kappa = 1, alpha, dg = 1, eps_K, eps_lam, Trace = FALSE)
 }
 \arguments{
+\item{F}{list of cdf functions for forecast distributions}
+
+\item{Q}{list of quantile functions for forecast distributions}
+
+\item{w}{numeric vector with cost per unit resource allocated to each
+coordinate}
+
+\item{K}{constraint on total provision}
+
+\item{kappa}{scale factor}
+
+\item{alpha}{normalized loss when outcome y exceeds forecast x}
+
+\item{dg}{numeric constant(s) or function(s) to calculate the derivative of the
+gpl function \code{g} for each coordinate}
+
 \item{Trace}{logical, record iterations}
 }
 \value{
-
+If \code{Trace} is \code{FALSE}, a numeric vector of length \code{N} givig the
+optimal allocations. If \code{Trace} is \code{TRUE}, a named list with entries:
+\itemize{
+\item \code{x}: numeric vector of length \code{N} giving the optimal allocations
+\item \code{xs}: list of values of \code{x} over the course of optimization
+\item \code{lambdas}: numeric vector of values of lambda over the course of optimization
+}
 }
 \description{
 Allocate to minimize expected gpl loss under forecasts F with constraint K

@@ -1,16 +1,17 @@
-#' @importFrom purrr map map2 pmap partial
-#' @importFrom rlang exec is_missing
+#' @importFrom purrr map map2 pmap map_dbl map_int partial
+#' @importFrom rlang exec is_missing is_list
 #' @importFrom dplyr mutate
 NULL
 
-#' Create gpl scoring/loss function
+#' Create generalized piecewise linear (gpl) scoring/loss function,
+#' which in general need not be piecewise linear
 #'
 #' @param g gpl function
 #' @param kappa scale factor
 #' @param alpha normalized loss when outcome y exceeds forecast x
 #' @param U loss when outcome y exceeds forecast x; equals kappa*alpha
 #' @param O cost when forecast x exceeds outcome y; equals kappa*(1-alpha)
-#' @return function giving loss
+#' @return function with arguments `x` and `y` giving loss
 #' @export
 gpl_loss_fun <- function(g = function(u) {u}, kappa = 1, alpha, O, U, const = 0) {
   if (!xor(is_missing(U), is_missing(alpha))) {
@@ -34,6 +35,8 @@ gpl_loss_fun <- function(g = function(u) {u}, kappa = 1, alpha, O, U, const = 0)
 #' @param ... passed to gpl_loss_fun
 #' @param gpl_loss specified loss function if ... missing
 #' @param f probability density
+#' @return function with argument x giving the expected loss with respect to the
+#'  distribution f
 #' @export
 gpl_loss_exp_fun <- function(..., gpl_loss = NULL, f) {
   if (is.null(gpl_loss)) {
@@ -48,38 +51,44 @@ gpl_loss_exp_fun <- function(..., gpl_loss = NULL, f) {
   return(Z)
 }
 
-#' Marginal expected benefit
+#' Create function to calculate the marginal expected benefit of allocating an
+#' additional unit of resources to a given target.
 #'
-#' @param kappa
-#' @param alpha
-#' @param w
-#' @param dg
+#' @param q_alpha
+#' @param ... ignored
+#' @inheritParams allocate
 #'
-#' @return
+#' @return a function with argument x that calculates the marginal expected benefit
 #' @export
 #'
 #' @examples
 margexb_fun <- function(F, kappa = 1, alpha, w, dg = 1, q_alpha = 1,...) {
   if (!is_function(dg)) {
     return(function(x) {w^(-1)*kappa*dg*(alpha - F(x*q_alpha))})
-    }
+  }
   function(x) {w^(-1)*kappa*dg(x*q_alpha)*(alpha - F(x*q_alpha))}
 }
 
 #' Allocate to minimize expected gpl loss under forecasts F with constraint K
 #'
-#' @param F
-#' @param Q
-#' @param kappa
-#' @param alpha
-#' @param dg
-#' @param w
-#' @param K
+#' @param F list of cdf functions for forecast distributions
+#' @param Q list of quantile functions for forecast distributions
+#' @param w numeric vector with cost per unit resource allocated to each
+#'  coordinate
+#' @param K constraint on total provision
+#' @param kappa scale factor
+#' @param alpha normalized loss when outcome y exceeds forecast x
+#' @param dg numeric constant(s) or function(s) to calculate the derivative of the
+#'  gpl function `g` for each coordinate
 #' @param eps_K
 #' @param eps_lam
 #' @param Trace logical, record iterations
 #'
-#' @return
+#' @return If `Trace` is `FALSE`, a numeric vector of length `N` givig the
+#'  optimal allocations. If `Trace` is `TRUE`, a named list with entries:
+#'    - `x`: numeric vector of length `N` giving the optimal allocations
+#'    - `xs`: list of values of `x` over the course of optimization
+#'    - `lambdas`: numeric vector of values of lambda over the course of optimization
 #' @export
 #'
 #' @examples
@@ -160,6 +169,14 @@ allocate <- function(F, Q, w, K,
   return(x)
 }
 
+#' Obtain the allocation score for a given forecast distribution F for the
+#' observed data value y in a constrained allocation problem.
+#' 
+#' @param y numeric observed data value
+#' @param g list of functions that calculate the gpl function for each coordinate
+#' @param against_oracle logical; if `TRUE`, scores are normalized relative to
+#'  an oracle forecaster
+#' @inheritParams allocate
 alloscore <- function(y, F, Q, w, K,
                       kappa = 1, alpha,
                       dg = 1,
@@ -172,4 +189,5 @@ alloscore <- function(y, F, Q, w, K,
                     eps_K = eps_K, eps_lam = eps_lam)
   gpl <- gpl_loss_fun(g = g, kappa = kappa, alpha = alpha)
   score <- gpl(allos, y)
+  return(score)
 }

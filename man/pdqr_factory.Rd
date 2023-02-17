@@ -7,7 +7,7 @@
 pdqr_factory(..., dist, type, trans = NULL, trans_inv = NULL, transpars = NULL)
 }
 \arguments{
-\item{...}{list including named parameter values to be partialed out}
+\item{...}{list of parameter name-value pairs to be partialed out}
 
 \item{dist}{distribution root name or \code{distfromq}}
 

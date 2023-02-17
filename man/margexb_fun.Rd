@@ -2,16 +2,30 @@
 % Please edit documentation in R/allocation.R
 \name{margexb_fun}
 \alias{margexb_fun}
-\title{Marginal expected benefit}
+\title{Create function to calculate the marginal expected benefit of allocating an
+additional unit of resources to a given target.}
 \usage{
-margexb_fun(F, kappa, alpha, w, dg = 1)
+margexb_fun(F, kappa = 1, alpha, w, dg = 1, q_alpha = 1, ...)
 }
 \arguments{
-\item{dg}{}
+\item{F}{list of cdf functions for forecast distributions}
+
+\item{kappa}{scale factor}
+
+\item{alpha}{normalized loss when outcome y exceeds forecast x}
+
+\item{w}{numeric vector with cost per unit resource allocated to each
+coordinate}
+
+\item{dg}{numeric constant(s) or function(s) to calculate the derivative of the
+gpl function \code{g} for each coordinate}
+
+\item{...}{ignored}
 }
 \value{
-
+a function with argument x that calculates the marginal expected benefit
 }
 \description{
-Marginal expected benefit
+Create function to calculate the marginal expected benefit of allocating an
+additional unit of resources to a given target.
 }
