@@ -139,14 +139,21 @@ allocate <- function(F, Q, w, K,
   while ((abs((sum(w*x) - K)/K) > eps_K) | (lamU - lamL > eps_lam)) {
     lam[tau] <- (lamL + lamU)/2
     for (i in 1:N) {
+      # if (tau==9 & i==8) browser()
       if (lam[tau] <= Lambda[[i]](0)) {
         I <- if (lam[tau] < lam[tau - 1]) c(x[i], qs[i]) else c(0, x[i])
+        tryCatch(
         x[i] <- uniroot(
           f = function(xi) {
             Lambda[[i]](xi) - lam[tau]
           },
           interval = I
-        )$root
+        )$root,
+        error = function(e) {
+          message("tau = ", tau, "  i = ", i)
+          stop(e)
+        }
+        )
       }
       else {
         x[i] <- 0
