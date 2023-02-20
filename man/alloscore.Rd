@@ -16,7 +16,7 @@ alloscore(
   dg = 1,
   eps_K,
   eps_lam,
-  g,
+  g = NULL,
   against_oracle = TRUE
 )
 }
@@ -39,7 +39,8 @@ coordinate}
 \item{dg}{numeric constant(s) or function(s) to calculate the derivative of the
 gpl function \code{g} for each coordinate}
 
-\item{g}{list of functions that calculate the gpl function for each coordinate}
+\item{g}{list of functions that calculate the gpl function for each coordinate;
+default value of NULL causes pinball loss to be used}
 
 \item{against_oracle}{logical; if \code{TRUE}, scores are normalized relative to
 an oracle forecaster}

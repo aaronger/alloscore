@@ -206,7 +206,8 @@ oracle_alloscore <- function(y, w, K,
 #' observed data value y in a constrained allocation problem.
 #'
 #' @param y numeric observed data value
-#' @param g list of functions that calculate the gpl function for each coordinate
+#' @param g list of functions that calculate the gpl function for each coordinate;
+#'  default value of NULL causes pinball loss to be used
 #' @param against_oracle logical; if `TRUE`, scores are normalized relative to
 #'  an oracle forecaster
 #' @inheritParams allocate
@@ -214,10 +215,13 @@ alloscore <- function(y, F, Q, w, K,
                       kappa = 1, alpha,
                       dg = 1,
                       eps_K, eps_lam,
-                      g = function(u) u,
+                      g = NULL,
                       against_oracle = TRUE) {
-  if ((g != function(u) u) & (dg == 1)) {
-    stop("derivatives of non-identity gpl functions must be specified")
+  if (dg == 1) {
+    if (!is.null(g)) {
+      stop("derivatives of non-identity gpl functions must be specified")
+    }
+    g <- function(u) u
   }
   allos <- allocate(F, Q, w, K,
                     kappa, alpha,

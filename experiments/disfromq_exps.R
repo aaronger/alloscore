@@ -40,7 +40,7 @@ fhosp1 <- fhosp1 %>% left_join(
   truth %>% select(location, target_end_date, value),
   by = c("location", "target_end_date"))
 
-Ks <- c(1000)
+Ks <- c(5500)
 Kdf <- data.frame(matrix(Ks,nrow = 1))
 names(Kdf) <- paste0("K=",Ks)
 
@@ -72,7 +72,7 @@ plots <- fhosp1 %>% filter(model == "CMU-TimeSeries") %>% split(.$full_location_
     qs <- df %>% pull(qs) %>% .[[1]]
     p <- ggplot(
       data.frame(
-        x=seq(from = -1, to = 1.5*max(qs), length.out = 1000), y = )))
+        x=seq(from = -1, to = 1.5*max(qs), length.out = 1000), y = ))
   })
 
 ggplot() + geom_function(fun=fhosp1$F[[8]])
