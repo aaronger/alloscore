@@ -101,6 +101,7 @@ allocate <- function(F, Q, w, K,
   N <-  max(map_int(largs, length))
   for (i in 1:length(largs)) {
     l <- largs[[i]]
+    # allow for repeated parameters (such as dg = 1) to be given by single term
     if (length(l) == 1) {
       if (!is_list(l)) {l <- list(l)}
       largs[[i]] <- rep(l, N)
@@ -111,7 +112,8 @@ allocate <- function(F, Q, w, K,
   }
   # get lambda_i's
   Lambda <- pmap(largs[names(largs) != "Q"], margexb_fun)
-  # get quantiles or finite constraint violators if alpha_i = 1
+  # get quantiles or finite constraint violators if alpha_i = 1;
+  # for oracle these will be y's
   Q <- map2(Q, w, function(Q, w) {function(alpha) {min(Q(alpha), w^(-1)*2*K)}})
   x <- qs <- map2_dbl(Q, alpha, exec)
   if (Trace) {
@@ -176,6 +178,30 @@ allocate <- function(F, Q, w, K,
   return(x)
 }
 
+oracle_allocate <- function(y, w, K,
+                            kappa = 1, alpha,
+                            dg = 1,
+                            eps_K, eps_lam, Trace = FALSE) {
+  allocate(
+    F = function(x) 0,
+    Q = map(y, function(y) function(p) y),
+    w, K, kappa, alpha, dg, eps_K, eps_lam, Trace
+  )
+}
+
+oracle_alloscore <- function(y, w, K,
+                             kappa = 1, alpha,
+                             dg = 1,
+                             eps_K, eps_lam,
+                             g = function(u) u) {
+  oracle_allos <- oracle_allocate(y, w, K,
+                    kappa, alpha,
+                    dg, eps_K, eps_lam)
+  gpl <- gpl_loss_fun(g, kappa, alpha)
+  score <- sum(gpl(oracle_allos, y))
+  return(score)
+}
+
 #' Obtain the allocation score for a given forecast distribution F for the
 #' observed data value y in a constrained allocation problem.
 #'
@@ -190,11 +216,18 @@ alloscore <- function(y, F, Q, w, K,
                       eps_K, eps_lam,
                       g = function(u) u,
                       against_oracle = TRUE) {
-  allos <- allocate(F = F, Q = Q, w = w, K = K,
-                    kappa = kappa, alpha = alpha,
-                    dg = dg,
-                    eps_K = eps_K, eps_lam = eps_lam)
-  gpl <- gpl_loss_fun(g = g, kappa = kappa, alpha = alpha)
+  if ((g != function(u) u) & (dg == 1)) {
+    stop("derivatives of non-identity gpl functions must be specified")
+  }
+  allos <- allocate(F, Q, w, K,
+                    kappa, alpha,
+                    dg, eps_K, eps_lam)
+  gpl <- gpl_loss_fun(g, kappa, alpha)
   score <- sum(gpl(allos, y))
+  if (against_oracle) {
+    score <- score - oracle_alloscore(y, w, K,
+                                      kappa, alpha,
+                                      dg, eps_K, eps_lam, g)
+  }
   return(score)
 }

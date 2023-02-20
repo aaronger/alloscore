@@ -61,5 +61,18 @@ names(Kdf) <- paste0("K=",Ks)
   against_oracle = FALSE
 ))))
 
-plot(fhosp1$F[[8]], xlim = c(40,55))
+plot(fhosp1$F[[8]], xlim = c(0,500))
 
+ps8 <- fhosp1 %>% slice(8) %>% pull(ps) %>% .[[1]]
+qs8 <- fhosp1 %>% slice(8) %>% pull(qs) %>% .[[1]]
+cdf1 <- make_p_fn(ps = ps8, qs = qs8)
+
+plots <- fhosp1 %>% filter(model == "CMU-TimeSeries") %>% split(.$full_location_name) %>%
+  map(function(df) {
+    qs <- df %>% pull(qs) %>% .[[1]]
+    p <- ggplot(
+      data.frame(
+        x=seq(from = -1, to = 1.5*max(qs), length.out = 1000), y = )))
+  })
+
+ggplot() + geom_function(fun=fhosp1$F[[8]])
