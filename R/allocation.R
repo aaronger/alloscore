@@ -54,7 +54,8 @@ gpl_loss_exp_fun <- function(..., gpl_loss = NULL, f) {
 #' Create function to calculate the marginal expected benefit of allocating an
 #' additional unit of resources to a given target.
 #'
-#' @param q_alpha
+#' @param q_scale scaling factor for resource level x; used for aligning marginal expected
+#'  benefit functions of different targets (and parameters) on single x interval.
 #' @param ... ignored
 #' @inheritParams allocate
 #'
@@ -62,11 +63,11 @@ gpl_loss_exp_fun <- function(..., gpl_loss = NULL, f) {
 #' @export
 #'
 #' @examples
-margexb_fun <- function(F, kappa = 1, alpha, w, dg = 1, q_alpha = 1,...) {
+margexb_fun <- function(F, kappa = 1, alpha, w, dg = 1, q_scale = 1,...) {
   if (!is_function(dg)) {
-    return(function(x) {w^(-1)*kappa*dg*(alpha - F(x*q_alpha))})
+    return(function(x) {w^(-1)*kappa*dg*(alpha - F(x*q_scale))})
   }
-  function(x) {w^(-1)*kappa*dg(x*q_alpha)*(alpha - F(x*q_alpha))}
+  function(x) {w^(-1)*kappa*dg(x*q_scale)*(alpha - F(x*q_scale))}
 }
 
 #' Allocate to minimize expected gpl loss under forecasts F with constraint K

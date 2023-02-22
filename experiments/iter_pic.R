@@ -18,10 +18,12 @@ load_all()
   unnest_wider(col = dists_and_params) %>%
   add_pdqr_funs()
 )
-K=10
+
+# set constraint and get allocations
+K=20
 (dat_allo <- dat %>%
     mutate(
-      q_alpha = map2_dbl(Q, alpha, exec),
+      q_scale = map2_dbl(Q, alpha, exec), # to be used for scaling below
       allo = allocate(
         F = F,
         Q = Q,
@@ -30,11 +32,13 @@ K=10
         K = K,
         eps_K = .01,
         eps_lam = .01
-      )
+      ),
+      allo_q_scaled = allo/q_scale
     ) %>%
-    relocate(allo)
+    relocate(allo, allo_q_scaled)
   )
 
+# get all iterations of lambda from allocation algorithm
 long <- with(dat_allo,
              allocate(
                F = F,
@@ -48,26 +52,32 @@ long <- with(dat_allo,
              ))
 lam_iters <- long$lambdas
 
-dat_allo <- dat_allo %>% mutate(Lambda_adj = pmap(., margexb_fun)) %>%
-  mutate(Lambda = pmap(.[names(.) != "q_alpha"], margexb_fun))
+# add marginal benefit functions scaled to fit on single [0,1] interval,
+# and unscaled as well, which are not yet being used
+dat_allo <- dat_allo %>% mutate(Lambda_scaled = pmap(., margexb_fun)) %>%
+  mutate(Lambda = pmap(.[names(.) != "q_scale"], margexb_fun))
 
-K_funfac <- function(df = dat_allo, forecasts = NULL) {
+# make function of lambda that gives total resource use at "lambda-quantiles"
+# which are regular quaatiles when lambda = 0.
+# When `!is.null(forecasts))`, the total use is for the subset of rows given by
+# vector `forecasts`
+K_fun_factory <- function(df = dat_allo, forecasts = NULL) {
   if (!is.null(forecasts)) df <- df[forecasts,]
   Vectorize(with(df, function(lambda) {
     sum(w * pmax(0, map2_dbl(Q, pmax(0, alpha-w*lambda), exec)))
   }))
 }
-K_fun <- K_funfac()
+K_fun <- K_fun_factory()
 
 ymax = .25
 n = nrow(dat_allo)
 with(dat_allo,
 {
   p1 <- ggplot() + xlim(0, 1) + ylim(0, ymax) +
-    map(1:n, ~ geom_function(aes(color = name[[.]]), fun = Lambda_adj[[.]])) +
+    map(1:n, ~ geom_function(aes(color = name[[.]]), fun = Lambda_scaled[[.]])) +
     geom_hline(yintercept = 0) +
     map(lam_iters, ~ geom_hline(yintercept = ., alpha = .3)) +
-    map(1:n, ~ geom_vline(aes(xintercept = (allo / q_alpha)[.], color = name[[.]]), alpha=.5)) +
+    map(1:n, ~ geom_vline(aes(xintercept = allo_q_scaled[.], color = name[[.]]), alpha=.5)) +
     labs(color = "Distribution",
          y = expression(lambda(x)),
          x = expression(x[i] / q[list(F[i],alpha[i])])) +

@@ -70,9 +70,19 @@ cdf1 <- make_p_fn(ps = ps8, qs = qs8)
 plots <- fhosp1 %>% filter(model == "CMU-TimeSeries") %>% split(.$full_location_name) %>%
   map(function(df) {
     qs <- df %>% pull(qs) %>% .[[1]]
-    p <- ggplot(
-      data.frame(
-        x=seq(from = -1, to = 1.5*max(qs), length.out = 1000), y = ))
+    p <- ggplot() + geom_point(
+      data = tibble(
+        qs = qs,
+        ps = df %>% pull(ps) %>% .[[1]]
+      ),
+      mapping = aes(x=qs, y=ps)
+    ) + geom_line(
+      data = tibble(
+        x = seq(from = -1, to = 1.5*max(qs), length.out = 1000),
+        y = df$F[[1]](x)
+      ),
+      mapping = aes(x=x,y=y)
+    )
+    return(p)
   })
 
-ggplot() + geom_function(fun=fhosp1$F[[8]])

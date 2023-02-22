@@ -5,7 +5,7 @@
 \title{Create function to calculate the marginal expected benefit of allocating an
 additional unit of resources to a given target.}
 \usage{
-margexb_fun(F, kappa = 1, alpha, w, dg = 1, q_alpha = 1, ...)
+margexb_fun(F, kappa = 1, alpha, w, dg = 1, q_scale = 1, ...)
 }
 \arguments{
 \item{F}{list of cdf functions for forecast distributions}
@@ -19,6 +19,9 @@ coordinate}
 
 \item{dg}{numeric constant(s) or function(s) to calculate the derivative of the
 gpl function \code{g} for each coordinate}
+
+\item{q_scale}{scaling factor for resource level x; used for aligning marginal expected
+benefit functions of different targets (and parameters) on single x interval.}
 
 \item{...}{ignored}
 }
