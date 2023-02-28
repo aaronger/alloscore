@@ -70,6 +70,29 @@ margexb_fun <- function(F, kappa = 1, alpha, w, dg = 1, q_scale = 1,...) {
   function(x) {w^(-1)*kappa*dg(x*q_scale)*(alpha - F(x*q_scale))}
 }
 
+find_linear_intervals <- function(Lambda, q, grid_size = 1000, tol = min(.001, 1/grid_size)) {
+  intervals <- list()
+  k <- 1
+  dtol <- tol*abs(Lambda(0)-Lambda(q))
+  x <- seq(from = 0, to = q, length.out = grid_size)
+  i <- 2
+  while (i < grid_size) {
+    if (abs(Lambda(x[i])-Lambda(x[i-1])) < dtol) {
+      left <- x[i-1] # start interval
+      i <- i+1 # give it at least length one
+      while ((abs(Lambda(x[i])-Lambda(left)) < dtol) & (i < grid_size)) {
+        i <- i+1 # keep adding if we don't leave dtol nbd
+      }
+      right <- x[i-1] # end interval at last point in dtol nbd
+      lam_val <- mean(c(Lambda(left), Lambda(right)))
+      intervals[[k]] <- c(left = left, right = right, lam_val = lam_val)
+      k <- k+1
+    }
+    i <- i+1
+  }
+  return(intervals)
+}
+
 #' Allocate to minimize expected gpl loss under forecasts F with constraint K
 #'
 #' @param F list of cdf functions for forecast distributions
@@ -82,7 +105,6 @@ margexb_fun <- function(F, kappa = 1, alpha, w, dg = 1, q_scale = 1,...) {
 #' @param dg numeric constant(s) or function(s) to calculate the derivative of the
 #'  gpl function `g` for each coordinate
 #' @param eps_K
-#' @param eps_lam
 #' @param Trace logical, record iterations
 #'
 #' @return If `Trace` is `FALSE`, a numeric vector of length `N` givig the
@@ -96,7 +118,7 @@ margexb_fun <- function(F, kappa = 1, alpha, w, dg = 1, q_scale = 1,...) {
 allocate <- function(F, Q, w, K,
                      kappa = 1, alpha,
                      dg = 1,
-                     eps_K, eps_lam, Trace = FALSE) {
+                     eps_K, Trace = FALSE) {
   # validation
   largs <- list(F = F, Q = Q, kappa = kappa, alpha = alpha, dg = dg, w = w)
   N <-  max(map_int(largs, length))
@@ -113,39 +135,49 @@ allocate <- function(F, Q, w, K,
   }
   # get lambda_i's
   Lambda <- pmap(largs[names(largs) != "Q"], margexb_fun)
-  # get quantiles or finite constraint violators if alpha_i = 1;
+  # get quantiles for alpha_i < 1 / finite constraint violators for alpha_i = 1;
   # for oracle these will be y's
-  Q <- map2(Q, w, function(Q, w) {function(alpha) {min(Q(alpha), w^(-1)*2*K)}})
+  # Q <- map2(Q, w, function(Q, w) {function(alpha) {min(Q(alpha), w^(-1)*2*K)}})
+  # initialize allocation at quantiles
   x <- qs <- map2_dbl(Q, alpha, exec)
   if (Trace) {
     xs <- list(x)
   }
-  # return quantiles if they satisfy constraint
+  # return this initial allocation at quantiles if it satisfies constraint
   if (sum(w*x) < K) {
     if (Trace) {
       return(list(x = x, xs = xs, lambdas = 0))
     }
     return(x)
   }
+  # if not, initialize binary search interval endpoints at lambda = MEB = 0 (corresponding to
+  # allocation at quantile) and the maximum over target set of MEB's evaluated at x = 0
+  # (corresponding to the maximum MEB if the allocations were all reduced as much as possible - to 0)
   lamL <- 0
   lamU <- max(map2_dbl(Lambda, 0, exec))
-  # return 0 if no marginal benefit for any component
+  # return x = 0 if there is no marginal benefit to allocating more than 0 in any component
   if (lamU <= 0) {
     if (Trace) {
       return(list(x = rep(0, N), xs = xs, lambdas = NA))
     }
     return(rep(0, N))
   }
+  # initialize sequence of search iterates at the 1st (and now rejected) value 0
   lam <- c(0)
+  # create counter for labeling iterates, starting with the soon to be calculated 2nd
   tau <- 2
   # main loop
-  while ((abs((sum(w*x) - K)/K) > eps_K) | (lamU - lamL > eps_lam)) {
+  while (abs((sum(w*x) - K)/K) > eps_K) {
     lam[tau] <- (lamL + lamU)/2
     for (i in 1:N) {
-      # if (tau==9 & i==8) browser()
+      # if (tau==19 & i==2) browser()
       if (lam[tau] <= Lambda[[i]](0)) {
+      # i.e., if we can expect a crit pt greater than x_i = 0
         I <- if (lam[tau] < lam[tau - 1]) c(x[i], qs[i]) else c(0, x[i])
+        # i.e., if lam has decreased we need to look closer to the quantile,
+        # and if not we need to look further toward 0
         tryCatch(
+          # should be in theory set valued on a discrete (finite?) set of of lams
         x[i] <- uniroot(
           f = function(xi) {
             Lambda[[i]](xi) - lam[tau]
@@ -182,22 +214,22 @@ allocate <- function(F, Q, w, K,
 oracle_allocate <- function(y, w, K,
                             kappa = 1, alpha,
                             dg = 1,
-                            eps_K, eps_lam, Trace = FALSE) {
+                            eps_K, Trace = FALSE) {
   allocate(
     F = function(x) 0,
     Q = map(y, function(y) function(p) y),
-    w, K, kappa, alpha, dg, eps_K, eps_lam, Trace
+    w, K, kappa, alpha, dg, eps_K, Trace
   )
 }
 
 oracle_alloscore <- function(y, w, K,
                              kappa = 1, alpha,
                              dg = 1,
-                             eps_K, eps_lam,
+                             eps_K,
                              g = function(u) u) {
   oracle_allos <- oracle_allocate(y, w, K,
                     kappa, alpha,
-                    dg, eps_K, eps_lam)
+                    dg, eps_K)
   gpl <- gpl_loss_fun(g, kappa, alpha)
   score <- sum(gpl(oracle_allos, y))
   return(score)
@@ -215,7 +247,7 @@ oracle_alloscore <- function(y, w, K,
 alloscore <- function(y, F, Q, w, K,
                       kappa = 1, alpha,
                       dg = 1,
-                      eps_K, eps_lam,
+                      eps_K,
                       g = NULL,
                       against_oracle = TRUE) {
   if (dg == 1) {
@@ -226,13 +258,13 @@ alloscore <- function(y, F, Q, w, K,
   }
   allos <- allocate(F, Q, w, K,
                     kappa, alpha,
-                    dg, eps_K, eps_lam)
+                    dg, eps_K)
   gpl <- gpl_loss_fun(g, kappa, alpha)
   score <- sum(gpl(allos, y))
   if (against_oracle) {
     score <- score - oracle_alloscore(y, w, K,
                                       kappa, alpha,
-                                      dg, eps_K, eps_lam, g)
+                                      dg, eps_K, g)
   }
   return(score)
 }
