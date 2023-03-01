@@ -15,7 +15,6 @@ alloscore(
   alpha,
   dg = 1,
   eps_K,
-  eps_lam,
   g = NULL,
   against_oracle = TRUE
 )

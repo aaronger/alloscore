@@ -170,7 +170,7 @@ allocate <- function(F, Q, w, K,
   while ((lamU - lamL)/lamU > eps_lam) {
     lam[tau] <- (lamL + lamU)/2
     for (i in 1:N) {
-      if (tau==8 & i==36) browser()
+    #   if (tau==8 & i==36) browser()
       if (lam[tau] <= Lambda[[i]](0)) {
       # i.e., if we can expect a crit pt greater than x_i = 0
         I <- if (lam[tau] < lam[tau - 1]) c(x[i], qs[i]) else c(0, x[i])
@@ -181,9 +181,9 @@ allocate <- function(F, Q, w, K,
         }
         # if Lambda[[i]](x) crosses lam for x < w^-1*2K adjust x[i] to root
         # otherwise leave unchanged which will cause lam to increase on next step
-        if (lam_diff(I[2]) < 0) {
+        if (lam_diff(I[2]) < 0 && diff(I) > 0) {
           tryCatch(
-            x[i] <- uniroot(f = lam_diff, interval = I)$root,
+            x[i] <- uniroot(f = lam_diff, interval = I, extendInt = "downX")$root,
             error = function(e) {
               message("error at tau = ", tau, "  i = ", i)
               #browser()

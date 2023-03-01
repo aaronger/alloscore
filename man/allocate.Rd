@@ -4,7 +4,7 @@
 \alias{allocate}
 \title{Allocate to minimize expected gpl loss under forecasts F with constraint K}
 \usage{
-allocate(F, Q, w, K, kappa = 1, alpha, dg = 1, eps_K, eps_lam, Trace = FALSE)
+allocate(F, Q, w, K, kappa = 1, alpha, dg = 1, eps_K, Trace = FALSE)
 }
 \arguments{
 \item{F}{list of cdf functions for forecast distributions}
