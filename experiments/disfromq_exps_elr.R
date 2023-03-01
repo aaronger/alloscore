@@ -2,6 +2,9 @@ library(tidyverse)
 library(covidHubUtils)
 library(distfromq)
 library(alloscore)
+library(geofacet)
+library(plotly)
+
 devtools::load_all()
 
 hub_repo_path <- "~/research/epi/covid/covid19-forecast-hub/"
@@ -105,7 +108,6 @@ p <- ggplot(
     geom_line() +
     theme_bw()
 
-library(plotly)
 ggplotly(p)
 
 
@@ -115,6 +117,59 @@ trad_scores %>%
     summarize(wis = sum(wis)) %>%
     arrange(wis)
 
+
+ggplot() +
+  geom_line(
+    data = truth %>%
+    dplyr::filter(location < 57, target_end_date >= "2021-11-01", target_end_date <= "2022-01-17"),
+        mapping = aes(x = target_end_date, y = value)
+  ) +
+  geom_point(
+    data = forecasts_hosp %>%
+        mutate(code = abbreviation) %>%
+        filter(
+            relative_horizon == 14,
+            location < 57,
+            quantile == 0.5,
+            model %in% c("MUNI-ARIMA", "CU-select")
+        ) %>%
+        ungroup(),
+    mapping = aes(x = target_end_date, y = value, color = model, shape = model)
+  ) +
+  facet_wrap(~ abbreviation) + #, grid = "us_state_grid1") +
+#   scale_x_continuous(labels = function(x) paste0("'", substr(x, 3, 4))) +
+  ylab("Daily Hospitalizations") +
+  theme_bw()
+
+act_vs_pred_df <- truth %>%
+    dplyr::filter(location < 57, target_end_date == "2022-01-10") %>%
+    dplyr::select(all_of(c("abbreviation", "value")))
+
+
+        abbreviation = abbreviation,
+        value = value)
+
+
+act_vs_pred_df %>%
+    dplyr::left_join(
+        forecasts_hosp %>%
+            filter(
+                relative_horizon == 14,
+                location < 57,
+                quantile == 0.5,
+                model %in% c("MUNI-ARIMA", "CU-select")
+            ) %>%
+            select(model, abbreviation, forecast = value),
+        by = "abbreviation",
+        multiple = "all"
+    ) %>%
+    tidyr::pivot_longer(
+        c("value", "forecast")
+    ) %>%
+    ggplot() +
+        geom_line(mapping = aes(x = name, y = value, group = abbreviation)) +
+        facet_wrap(~ model) +
+        theme_bw()
 
 for (m in unique(fhosp1$model)) {
     # m <- "USC-SI_kJalpha"
@@ -139,6 +194,8 @@ for (m in unique(fhosp1$model)) {
     
     # fhosp1 %>% filter(model == m) %>% as.data.frame() %>% nrow()
 }
+
+
 
 plot(fhosp1$F[[8]], xlim = c(0,500))
 
