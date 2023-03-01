@@ -40,9 +40,32 @@ fhosp1 <- fhosp1 %>% left_join(
   truth %>% select(location, target_end_date, value),
   by = c("location", "target_end_date"))
 
-Ks <- c(5500)
+Ks <- c(100)
 Kdf <- data.frame(matrix(Ks,nrow = 1))
 names(Kdf) <- paste0("K=",Ks)
+allos <- with(fhosp1 %>% filter(model == "CMU-TimeSeries"), allocate(
+      F = F,
+      Q = Q,
+      w = 1,
+      K = 100,
+      kappa = 1,
+      alpha = 1,
+      dg = 1,
+      eps_K = .01,
+      Trace = FALSE
+    ))
+ggplot() + xlim(0,500) +map(1:length(allos$meb), ~geom_function(fun = allos$meb[[.]]))
+
+with(fhosp1 %>% filter(model == "CMU-TimeSeries"), oracle_allocate(
+  y = value,
+  w = 1,
+  K = 100,
+  kappa = 1,
+  alpha = 1,
+  dg = 1,
+  eps_K = .01,
+  Trace = FALSE
+))
 
 (ascores <- fhosp1 %>%
     bind_cols(Kdf) %>%
@@ -57,10 +80,10 @@ names(Kdf) <- paste0("K=",Ks)
   alpha = 1,
   dg = 1,
   eps_K = .01,
-  against_oracle = FALSE
+  against_oracle = TRUE
 ))))
 
-plot(fhosp1$F[[8]], xlim = c(0,500))
+plot(fhosp1$F[[5]], xlim = c(0,1000))
 
 ps8 <- fhosp1 %>% slice(8) %>% pull(ps) %>% .[[1]]
 qs8 <- fhosp1 %>% slice(8) %>% pull(qs) %>% .[[1]]

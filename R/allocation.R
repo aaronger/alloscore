@@ -170,25 +170,33 @@ allocate <- function(F, Q, w, K,
   while (abs((sum(w*x) - K)/K) > eps_K) {
     lam[tau] <- (lamL + lamU)/2
     for (i in 1:N) {
-      # if (tau==19 & i==2) browser()
+      #if (tau==2 & i==1) browser()
       if (lam[tau] <= Lambda[[i]](0)) {
       # i.e., if we can expect a crit pt greater than x_i = 0
         I <- if (lam[tau] < lam[tau - 1]) c(x[i], qs[i]) else c(0, x[i])
         # i.e., if lam has decreased we need to look closer to the quantile,
         # and if not we need to look further toward 0
-        tryCatch(
-          # should be in theory set valued on a discrete (finite?) set of of lams
-        x[i] <- uniroot(
-          f = function(xi) {
-            Lambda[[i]](xi) - lam[tau]
-          },
-          interval = I
-        )$root,
-        error = function(e) {
-          message("tau = ", tau, "  i = ", i)
-          stop(e)
+        f = function(xi) {
+          Lambda[[i]](xi) - lam[tau]
         }
-        )
+        if (f(I[2]) < 0) {
+          tryCatch(
+            x[i] <- uniroot(f, interval = I)$root,
+            error = function(e) {
+              message("error at tau = ", tau, "  i = ", i)
+              #browser()
+              stop(e)
+            },
+            finally = if (Trace) {
+              return(list(
+                x = x,
+                xs = xs,
+                lambdas = lam,
+                meb = Lambda
+              ))
+            }
+          )
+        }
       }
       else {
         x[i] <- 0
@@ -206,7 +214,7 @@ allocate <- function(F, Q, w, K,
     tau <- tau + 1
   }
   if (Trace) {
-    return(list(x = x, xs = xs, lambdas = lam))
+    return(list(x = x, xs = xs, lambdas = lam, meb = Lambda))
   }
   return(x)
 }
