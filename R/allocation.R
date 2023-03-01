@@ -135,11 +135,11 @@ allocate <- function(F, Q, w, K,
   }
   # get lambda_i's
   Lambda <- pmap(largs[names(largs) != "Q"], margexb_fun)
-  # get quantiles for alpha_i < 1 / finite constraint violators for alpha_i = 1;
-  # for oracle these will be y's
-  # Q <- map2(Q, w, function(Q, w) {function(alpha) {min(Q(alpha), w^(-1)*2*K)}})
-  # initialize allocation at quantiles
-  x <- qs <- map2_dbl(Q, alpha, exec)
+  # initialize allocation at q_i if alpha_i < 1 or something big enough to
+  # violate constraint if not
+  qs <- map2_dbl(Q, alpha, exec)
+  qs[qs==Inf] <- (w^(-1)*rep(1,N)*2*K)[qs==Inf]
+  x <- qs
   if (Trace) {
     xs <- list(x)
   }

@@ -50,14 +50,13 @@ names(Kdf) <- paste0("K=",Ks)
   summarise(ytot = sum(value), across(starts_with("K"), ~alloscore(
   y = value,
   F = F,
-  Q= Q,
+  Q = Q,
   w = 1,
   K = unique(.x),
   kappa = 1,
   alpha = 1,
   dg = 1,
   eps_K = .01,
-  eps_lam = .01,
   against_oracle = FALSE
 ))))
 
