@@ -40,19 +40,20 @@ fhosp1 <- fhosp1 %>% left_join(
   truth %>% select(location, target_end_date, value),
   by = c("location", "target_end_date"))
 
-Ks <- c(100)
+Ks <- c(5000)
 Kdf <- data.frame(matrix(Ks,nrow = 1))
 names(Kdf) <- paste0("K=",Ks)
-allos <- with(fhosp1 %>% filter(model == "CMU-TimeSeries"), allocate(
+allos <- with(fhosp1 %>% filter(model == "COVIDhub-ensemble"), allocate(
       F = F,
       Q = Q,
       w = 1,
-      K = 100,
+      K = 5000,
       kappa = 1,
       alpha = 1,
       dg = 1,
       eps_K = .01,
-      Trace = FALSE
+      eps_lam = .001,
+      Trace = TRUE
     ))
 ggplot() + xlim(0,500) +map(1:length(allos$meb), ~geom_function(fun = allos$meb[[.]]))
 
@@ -64,6 +65,7 @@ with(fhosp1 %>% filter(model == "CMU-TimeSeries"), oracle_allocate(
   alpha = 1,
   dg = 1,
   eps_K = .01,
+  eps_lam = .001,
   Trace = FALSE
 ))
 
@@ -80,6 +82,7 @@ with(fhosp1 %>% filter(model == "CMU-TimeSeries"), oracle_allocate(
   alpha = 1,
   dg = 1,
   eps_K = .01,
+  eps_lam = .001,
   against_oracle = TRUE
 ))))
 

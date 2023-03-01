@@ -105,6 +105,7 @@ find_linear_intervals <- function(Lambda, q, grid_size = 1000, tol = min(.001, 1
 #' @param dg numeric constant(s) or function(s) to calculate the derivative of the
 #'  gpl function `g` for each coordinate
 #' @param eps_K
+#' @param eps_lam
 #' @param Trace logical, record iterations
 #'
 #' @return If `Trace` is `FALSE`, a numeric vector of length `N` givig the
@@ -118,7 +119,7 @@ find_linear_intervals <- function(Lambda, q, grid_size = 1000, tol = min(.001, 1
 allocate <- function(F, Q, w, K,
                      kappa = 1, alpha,
                      dg = 1,
-                     eps_K, Trace = FALSE) {
+                     eps_K, eps_lam, Trace = FALSE) {
   # validation
   largs <- list(F = F, Q = Q, kappa = kappa, alpha = alpha, dg = dg, w = w)
   N <-  max(map_int(largs, length))
@@ -140,9 +141,7 @@ allocate <- function(F, Q, w, K,
   qs <- map2_dbl(Q, alpha, exec)
   qs[qs==Inf] <- (w^(-1)*rep(1,N)*2*K)[qs==Inf]
   x <- qs
-  if (Trace) {
-    xs <- list(x)
-  }
+  xs <- list(x)
   # return this initial allocation at quantiles if it satisfies constraint
   if (sum(w*x) < K) {
     if (Trace) {
@@ -155,6 +154,7 @@ allocate <- function(F, Q, w, K,
   # (corresponding to the maximum MEB if the allocations were all reduced as much as possible - to 0)
   lamL <- 0
   lamU <- max(map2_dbl(Lambda, 0, exec))
+  lamU <- lamU*(1+2*eps_lam)
   # return x = 0 if there is no marginal benefit to allocating more than 0 in any component
   if (lamU <= 0) {
     if (Trace) {
@@ -167,21 +167,23 @@ allocate <- function(F, Q, w, K,
   # create counter for labeling iterates, starting with the soon to be calculated 2nd
   tau <- 2
   # main loop
-  while (abs((sum(w*x) - K)/K) > eps_K) {
+  while ((lamU - lamL)/lamU > eps_lam) {
     lam[tau] <- (lamL + lamU)/2
     for (i in 1:N) {
-      #if (tau==2 & i==1) browser()
+      if (tau==8 & i==36) browser()
       if (lam[tau] <= Lambda[[i]](0)) {
       # i.e., if we can expect a crit pt greater than x_i = 0
         I <- if (lam[tau] < lam[tau - 1]) c(x[i], qs[i]) else c(0, x[i])
         # i.e., if lam has decreased we need to look closer to the quantile,
         # and if not we need to look further toward 0
-        f = function(xi) {
+        lam_diff = function(xi) {
           Lambda[[i]](xi) - lam[tau]
         }
-        if (f(I[2]) < 0) {
+        # if Lambda[[i]](x) crosses lam for x < w^-1*2K adjust x[i] to root
+        # otherwise leave unchanged which will cause lam to increase on next step
+        if (lam_diff(I[2]) < 0) {
           tryCatch(
-            x[i] <- uniroot(f, interval = I)$root,
+            x[i] <- uniroot(f = lam_diff, interval = I)$root,
             error = function(e) {
               message("error at tau = ", tau, "  i = ", i)
               #browser()
@@ -208,10 +210,24 @@ allocate <- function(F, Q, w, K,
     else {
       lamL <- lam[tau]
     }
-    if (Trace) {
-      xs[[tau]] <- x
-    }
+    xs[[tau]] <- x
     tau <- tau + 1
+  }
+  if ((abs((sum(w*x) - K)/K) > eps_K)) {
+    x_L <- x_U <- x
+    for (j in 2:tau) {
+      if (j == tau) {
+        stop("Something went very wrong")
+      }
+      x_L <- pmin(x_L, xs[[tau - j]])
+      x_U <- pmax(x_U, xs[[tau - j]])
+      Delta <- function(t) {
+        sum(w * ((1 - t) * x_L + t * x_U)) - K
+      }
+      if ((Delta(0) < 0) & (Delta(1) > 0)) break
+    }
+    t_star <- uniroot(f = Delta, interval = c(0,1))$root
+    x <- (1-t_star)*x_L + t_star*x_U
   }
   if (Trace) {
     return(list(x = x, xs = xs, lambdas = lam, meb = Lambda))
@@ -222,11 +238,11 @@ allocate <- function(F, Q, w, K,
 oracle_allocate <- function(y, w, K,
                             kappa = 1, alpha,
                             dg = 1,
-                            eps_K, Trace = FALSE) {
+                            eps_K, eps_lam = .001, Trace = FALSE) {
   allocate(
     F = function(x) 0,
     Q = map(y, function(y) function(p) y),
-    w, K, kappa, alpha, dg, eps_K, Trace
+    w, K, kappa, alpha, dg, eps_K, eps_lam, Trace
   )
 }
 
@@ -234,10 +250,11 @@ oracle_alloscore <- function(y, w, K,
                              kappa = 1, alpha,
                              dg = 1,
                              eps_K,
+                             eps_lam = .001,
                              g = function(u) u) {
   oracle_allos <- oracle_allocate(y, w, K,
                     kappa, alpha,
-                    dg, eps_K)
+                    dg, eps_K, eps_lam)
   gpl <- gpl_loss_fun(g, kappa, alpha)
   score <- sum(gpl(oracle_allos, y))
   return(score)
@@ -256,6 +273,7 @@ alloscore <- function(y, F, Q, w, K,
                       kappa = 1, alpha,
                       dg = 1,
                       eps_K,
+                      eps_lam,
                       g = NULL,
                       against_oracle = TRUE) {
   if (dg == 1) {
@@ -266,13 +284,13 @@ alloscore <- function(y, F, Q, w, K,
   }
   allos <- allocate(F, Q, w, K,
                     kappa, alpha,
-                    dg, eps_K)
+                    dg, eps_K, eps_lam)
   gpl <- gpl_loss_fun(g, kappa, alpha)
   score <- sum(gpl(allos, y))
   if (against_oracle) {
     score <- score - oracle_alloscore(y, w, K,
                                       kappa, alpha,
-                                      dg, eps_K, g)
+                                      dg, eps_K, eps_lam, g)
   }
   return(score)
 }

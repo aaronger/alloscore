@@ -4,14 +4,14 @@ library(devtools)
 load_all()
 
 (dat <- tibble(
-  alpha = c(.2,.6,.3,.9),
-  w = c(3,2,3,5),
+  alpha = c(.2,.6,.3,.9,.7),
+  w = c(3,2,3,5,.2),
   dists_and_params = list(
     list(dist = "norm", mean = 3, sd = 2),
     list(dist = "norm", mean = 2, sd = 4),
     list(dist = "exp", rate = .5),
-    list(dist = "gamma", shape = 1, rate = .3)
-    #list(dist = "unif", min = 5, max = 8)
+    list(dist = "gamma", shape = 1, rate = .3),
+    list(dist = "unif", min = 5, max = 8)
   ),
   name = map(dists_and_params,
              ~toString(paste0(.[["dist"]], ", ",
@@ -47,7 +47,8 @@ K <- 6
         alpha = alpha,
         w = w,
         K = K,
-        eps_K = .01
+        eps_K = .01,
+        eps_lam = .001
       ),
       allo_q_scaled = allo/q_scale
     ) %>%
@@ -63,6 +64,7 @@ long <- with(dat_allo,
                w = w,
                K = K,
                eps_K = .01,
+               eps_lam = .001,
                Trace = TRUE
              ))
 lam_iters <- long$lambdas
@@ -80,7 +82,7 @@ K_fun_factory <- function(df = dat_allo, forecasts = NULL) {
 }
 K_fun <- K_fun_factory()
 
-ymax = .25
+ymax = 1
 xmax = max(dat_allo$allo)*1.1
 n = nrow(dat_allo)
 with(dat_allo,
@@ -98,7 +100,7 @@ with(dat_allo,
 
   p2 <- ggplot(data = tibble(y = seq(0, 1, length.out = 1000)), aes(x = x, y = y)) +
     ylim(0, ymax) + xlim(0, K_fun(0)) +
-    geom_line(aes(x = K_funfac()(y))) +
+    geom_line(aes(x = K_fun_factory()(y))) +
     # geom_line(aes(x =  K_funfac(forecasts = c(2, 4))(y)), color = "blue") +
     # #geom_line(aes(x =  K_funfac(forecasts = c(1,2,4))(y))) +
     #map(1:n, ~ geom_line(aes(x = K_funfac(forecasts = c(.))(y), color = name[[.]]))) +
