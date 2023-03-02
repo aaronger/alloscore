@@ -34,21 +34,22 @@ gpl_loss_fun <- function(g = function(u) {u}, kappa = 1, alpha, O, U, const = 0)
 #'
 #' @param ... passed to gpl_loss_fun
 #' @param gpl_loss specified loss function if ... missing
-#' @param f probability density
+#' @param F predictive CDF
 #' @return function with argument x giving the expected loss with respect to the
-#'  distribution f
+#'  distribution F
 #' @export
-gpl_loss_exp_fun <- function(..., gpl_loss = NULL, f) {
+gpl_loss_exp_fun <- function(..., gpl_loss = NULL, F) {
   if (is.null(gpl_loss)) {
     gpl_loss <- gpl_loss_fun(...)
   }
-  Z <- function(x) {
+  dF <- function(y) min(numDeriv::grad(F, y), 1e+4)
+  sbar <- function(x) {
     map_dbl(x, function(.x)
       integrate(
-        f = function(y) gpl_loss(.x, y) * f(y), lower = -Inf, upper = Inf
+        f = function(y) gpl_loss(.x, y) * dF(y), lower = -Inf, upper = Inf
       )$value)
   }
-  return(Z)
+  return(sbar)
 }
 
 #' Create function to calculate the marginal expected benefit of allocating an
@@ -106,6 +107,7 @@ find_linear_intervals <- function(Lambda, q, grid_size = 1000, tol = min(.001, 1
 #'  gpl function `g` for each coordinate
 #' @param eps_K
 #' @param eps_lam
+#' @param point_mass_window
 #' @param Trace logical, record iterations
 #'
 #' @return If `Trace` is `FALSE`, a numeric vector of length `N` givig the
@@ -119,7 +121,10 @@ find_linear_intervals <- function(Lambda, q, grid_size = 1000, tol = min(.001, 1
 allocate <- function(F, Q, w, K,
                      kappa = 1, alpha,
                      dg = 1,
-                     eps_K, eps_lam, Trace = FALSE) {
+                     eps_K, eps_lam,
+                     point_mass_window = .001,
+                     Trace = FALSE,
+                     verbose = FALSE) {
   # validation
   largs <- list(F = F, Q = Q, kappa = kappa, alpha = alpha, dg = dg, w = w)
   N <-  max(map_int(largs, length))
@@ -142,6 +147,7 @@ allocate <- function(F, Q, w, K,
   qs[qs==Inf] <- (w^(-1)*rep(1,N)*2*K)[qs==Inf]
   x <- qs
   xs <- list(x)
+  xis <- as.list(x)
   # return this initial allocation at quantiles if it satisfies constraint
   if (sum(w*x) < K) {
     if (Trace) {
@@ -165,15 +171,21 @@ allocate <- function(F, Q, w, K,
   # initialize sequence of search iterates at the 1st (and now rejected) value 0
   lam <- c(0)
   # create counter for labeling iterates, starting with the soon to be calculated 2nd
-  tau <- 2
+  tau <- 1
   # main loop
-  while ((lamU - lamL)/lamU > eps_lam) {
+  while ((lamU - lamL)/(lamU) > eps_lam) {
+    tau <- tau + 1
     lam[tau] <- (lamL + lamU)/2
     for (i in 1:N) {
-      if (tau==8 & i==36) browser()
+      #if (tau==40) browser()
       if (lam[tau] <= Lambda[[i]](0)) {
       # i.e., if we can expect a crit pt greater than x_i = 0
-        I <- if (lam[tau] < lam[tau - 1]) c(x[i], qs[i]) else c(0, x[i])
+        I <- if (lam[tau] < lam[tau - 1]) {
+          c(x[i] * (1-point_mass_window), qs[i])
+        } else
+        {
+          c(0, x[i] * (1+point_mass_window))
+        }
         # i.e., if lam has decreased we need to look closer to the quantile,
         # and if not we need to look further toward 0
         lam_diff = function(xi) {
@@ -188,14 +200,6 @@ allocate <- function(F, Q, w, K,
               message("error at tau = ", tau, "  i = ", i)
               #browser()
               stop(e)
-            },
-            finally = if (Trace) {
-              return(list(
-                x = x,
-                xs = xs,
-                lambdas = lam,
-                meb = Lambda
-              ))
             }
           )
         }
@@ -203,6 +207,7 @@ allocate <- function(F, Q, w, K,
       else {
         x[i] <- 0
       }
+      xis[[i]][tau] <- x[i]
     }
     if (sum(w*x) < K) {
       lamU <- lam[tau]
@@ -211,11 +216,13 @@ allocate <- function(F, Q, w, K,
       lamL <- lam[tau]
     }
     xs[[tau]] <- x
-    tau <- tau + 1
+    if (tau > 25) {
+      if (xis %>% map_dbl(~sum(abs(diff(tail(.,3))))) %>% max() < .001) break
+    }
   }
   if ((abs((sum(w*x) - K)/K) > eps_K)) {
     x_L <- x_U <- x
-    for (j in 2:tau) {
+    for (j in 1:tau) {
       if (j == tau) {
         stop("Something went very wrong")
       }
@@ -230,8 +237,9 @@ allocate <- function(F, Q, w, K,
     x <- (1-t_star)*x_L + t_star*x_U
   }
   if (Trace) {
-    return(list(x = x, xs = xs, lambdas = lam, meb = Lambda))
+    return(list(x = x, xs = xs, xis = xis, lambdas = lam, meb = Lambda))
   }
+  if (verbose) cat(K, tau, " ")
   return(x)
 }
 
@@ -275,7 +283,8 @@ alloscore <- function(y, F, Q, w, K,
                       eps_K,
                       eps_lam,
                       g = NULL,
-                      against_oracle = TRUE) {
+                      against_oracle = TRUE,
+                      verbose = FALSE) {
   if (dg == 1) {
     if (!is.null(g)) {
       stop("derivatives of non-identity gpl functions must be specified")
@@ -284,7 +293,7 @@ alloscore <- function(y, F, Q, w, K,
   }
   allos <- allocate(F, Q, w, K,
                     kappa, alpha,
-                    dg, eps_K, eps_lam)
+                    dg, eps_K, eps_lam, verbose = verbose)
   gpl <- gpl_loss_fun(g, kappa, alpha)
   score <- sum(gpl(allos, y))
   if (against_oracle) {
