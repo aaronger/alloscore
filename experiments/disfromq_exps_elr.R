@@ -69,7 +69,7 @@ fhosp1 <- fhosp1 %>% left_join(
   truth %>% select(location, target_end_date, value),
   by = c("location", "target_end_date"))
 
-Ks <- seq(from = 5500, to = 30000, by = 500)
+Ks <- seq(from = 5000, to = 60000, by = 500)
 Kdf <- data.frame(matrix(Ks,nrow = 1))
 names(Kdf) <- paste0("K=",Ks)
 
@@ -89,7 +89,7 @@ names(Kdf) <- paste0("K=",Ks)
         dg = 1,
         eps_K = .01,
         eps_lam = 1e-5,
-        against_oracle = FALSE
+        against_oracle = TRUE
         ))
   ))
 
@@ -103,7 +103,7 @@ ascores_long <- ascores %>%
 
 p <- ggplot(
     data = ascores_long,
-    mapping = aes(x = as.numeric(K), y = value, color = model, linetype = model)
+    mapping = aes(x = K, y = value, color = model, linetype = model)
 ) +
     geom_line() +
     theme_bw()

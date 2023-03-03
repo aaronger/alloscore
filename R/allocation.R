@@ -138,7 +138,8 @@ allocate <- function(F, Q, w, K,
   Lambda <- pmap(largs[names(largs) != "Q"], margexb_fun)
   # initialize allocation at q_i if alpha_i < 1 or something big enough to
   # violate constraint if not
-  qs <- map2_dbl(Q, alpha, exec)
+  Q_bdd <- map(Q, function(Q_i) function(x) pmin(Q_i(x), w^(-1)*2*K))
+  qs <- map2_dbl(Q_bdd, alpha, exec)
   qs[qs==Inf] <- (w^(-1)*rep(1,N)*2*K)[qs==Inf]
   x <- qs
   xs <- list(x)
@@ -179,26 +180,28 @@ allocate <- function(F, Q, w, K,
         lam_diff = function(xi) {
           Lambda[[i]](xi) - lam[tau]
         }
+        
+        x[i] <- Q_bdd[[i]](alpha - lam[tau] * w / kappa)
         # if Lambda[[i]](x) crosses lam for x < w^-1*2K adjust x[i] to root
         # otherwise leave unchanged which will cause lam to increase on next step
-        if (lam_diff(I[2]) < 0 && diff(I) > 0) {
-          tryCatch(
-            x[i] <- uniroot(f = lam_diff, interval = I, extendInt = "downX")$root,
-            error = function(e) {
-              message("error at tau = ", tau, "  i = ", i)
-              #browser()
-              stop(e)
-            },
-            finally = if (Trace) {
-              return(list(
-                x = x,
-                xs = xs,
-                lambdas = lam,
-                meb = Lambda
-              ))
-            }
-          )
-        }
+        # if (lam_diff(I[2]) < 0 && diff(I) > 0) {
+        #   tryCatch(
+        #     x[i] <- uniroot(f = lam_diff, interval = I, extendInt = "downX")$root,
+        #     error = function(e) {
+        #       message("error at tau = ", tau, "  i = ", i)
+        #       #browser()
+        #       stop(e)
+        #     },
+        #     finally = if (Trace) {
+        #       return(list(
+        #         x = x,
+        #         xs = xs,
+        #         lambdas = lam,
+        #         meb = Lambda
+        #       ))
+        #     }
+        #   )
+        # }
       }
       else {
         x[i] <- 0
