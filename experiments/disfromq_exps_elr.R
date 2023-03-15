@@ -4,7 +4,8 @@ library(distfromq)
 library(alloscore)
 devtools::load_all()
 
-hub_repo_path <- "~/research/epi/covid/covid19-forecast-hub/"
+#hub_repo_path <- "~/research/epi/covid/covid19-forecast-hub/"
+hub_repo_path = "~/covid/covid19-forecast-hub/"
 
 inc_hosp_targets <- paste(0:30, "day ahead inc hosp")
 forecasts_hosp <- load_forecasts(
@@ -66,9 +67,15 @@ fhosp1 <- fhosp1 %>% left_join(
   truth %>% select(location, target_end_date, value),
   by = c("location", "target_end_date"))
 
-Ks <- seq(from = 5500, to = 30000, by = 500)
+ys <- fhosp1 %>% filter(model == "COVIDhub-baseline") %>% select(value)
+
+Ks <- c(seq(from = 5500, to = 30000, by = 500),seq(from = 30000, to = 120000, by = 2000))
 Kdf <- data.frame(matrix(Ks,nrow = 1))
 names(Kdf) <- paste0("K=",Ks)
+
+Ks_large <- seq(from = 30000, to = 120000, by = 2000)
+K_large_df <- data.frame(matrix(Ks_large,nrow = 1))
+names(K_large_df) <- paste0("K=",Ks_large)
 
 (ascores <- fhosp1 %>%
     bind_cols(Kdf) %>%
@@ -85,12 +92,14 @@ names(Kdf) <- paste0("K=",Ks)
         alpha = 1,
         dg = 1,
         eps_K = .01,
-        eps_lam = 1e-5,
-        against_oracle = FALSE
+        eps_lam = 1e-3,
+        against_oracle = TRUE,
+        verbose = TRUE
         ))
   ))
 
-ascores_long <- ascores %>%
+
+ascores_long <- cbind(ascores) %>%
     tidyr::pivot_longer(
         starts_with("K="),
         names_prefix = "K=",
@@ -108,6 +117,9 @@ p <- ggplot(
 library(plotly)
 ggplotly(p)
 
+ao <- alloscore::oracle_allocate(ys$value,
+                                 w = 1, K = 10000, alpha = 1,
+                                 eps_K = .001, eps_lam = 1e-4, Trace = TRUE)
 
 trad_scores %>%
     filter(model %in% mkeep) %>%
@@ -117,28 +129,85 @@ trad_scores %>%
 
 
 for (m in unique(fhosp1$model)) {
-    # m <- "USC-SI_kJalpha"
+    m <- "USC-SI_kJalpha"
+    m <- "MUNI-ARIMA"
     print(m)
     alloscore:::alloscore(
         y = fhosp1 %>% filter(model == m) %>% pull(value),
         F = fhosp1 %>% filter(model == m) %>% pull(F),
         Q = fhosp1 %>% filter(model == m) %>% pull(Q),
         w = 1,
-        K = 5500,
+        K = 38555,
         kappa = 1,
         alpha = 1,
         dg = 1,
-        eps_K = .01,
+        eps_K = .001,
         eps_lam = 1e-5,
         against_oracle = FALSE
     )
-    
+    alloscore:::alloscore(
+        y = fhosp1 %>% filter(model == m) %>% pull(value),
+        F = fhosp1 %>% filter(model == m) %>% pull(F),
+        Q = fhosp1 %>% filter(model == m) %>% pull(Q),
+        w = 1,
+        K = 38554,
+        kappa = 1,
+        alpha = 1,
+        dg = 1,
+        eps_K = .001,
+        eps_lam = 1e-5,
+        against_oracle = FALSE
+    )
+    a <- alloscore:::allocate(
+        F = fhosp1 %>% filter(model == m) %>% pull(F),
+        Q = fhosp1 %>% filter(model == m) %>% pull(Q),
+        w = 1,
+        K = 38554,
+        kappa = 1,
+        alpha = 1,
+        dg = 1,
+        eps_K = .001,
+        eps_lam = 1e-5,
+        Trace = TRUE
+    )
+    a2 <- alloscore:::allocate(
+      F = fhosp1 %>% filter(model == m) %>% pull(F),
+      Q = fhosp1 %>% filter(model == m) %>% pull(Q),
+      w = 1,
+      K = 38555,
+      kappa = 1,
+      alpha = 1,
+      dg = 1,
+      eps_K = .001,
+      eps_lam = 1e-5,
+      Trace = TRUE
+    )
+
     # fhosp1 %>% filter(model == m) %>% slice(1) %>% pull(ps)
     # fhosp1 %>% filter(model == m) %>% slice(1) %>% pull(qs)
     # Q <- fhosp1 %>% filter(model == m) %>% slice(1) %>% pull(Q) %>% `[[`(1)
-    
+
     # fhosp1 %>% filter(model == m) %>% as.data.frame() %>% nrow()
 }
+
+conv_dat <- a$xs %>% map(enframe) %>% enframe() %>%
+  rename(tau = name) %>% unnest(cols = value) %>% mutate(location = as.factor(name)) %>% mutate(K="38554")
+conv_dat2 <- a2$xs %>% map(enframe) %>% enframe() %>%
+  rename(tau = name) %>% unnest(cols = value) %>% mutate(location = as.factor(name))%>% mutate(K="38555")
+df <- bind_rows(conv_dat, conv_dat2)
+
+ggplot(data=df %>% filter(tau>1), aes(x=tau,y=value,color=location,linetype=as.factor(K)))+geom_line()
+
+ggplot() + xlim(c(12, 15)) + geom_function(fun = function(x) pnorm(x, log.p = TRUE), n=1000)
+
+  map(1:51, ~geom_function(fun = a$meb[[.]]))
+
+
+plot_by_tau <- function(allo_trace) {
+  dat <- map(allo_trace$xis,~enframe(.)) %>% enframe() %>% unnest()
+}
+
+
 
 plot(fhosp1$F[[8]], xlim = c(0,500))
 

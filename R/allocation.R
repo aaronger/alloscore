@@ -225,11 +225,11 @@ allocate <- function(F, Q, w, K,
   # create counter for labeling iterates, starting with the soon to be calculated 2nd
   tau <- 1
   # main loop
-  while ((lamU - lamL)/(lamU) > eps_lam) {
+  while (((lamU - lamL)/(lamU) > eps_lam) & (lamU > eps_lam)) {
     tau <- tau + 1
     lam[tau] <- (lamL + lamU)/2
     for (i in 1:N) {
-      #if (tau==40) browser()
+      #if (tau==14) browser()
       if (lam[tau] <= Lambda[[i]](0)) {
       # i.e., if we can expect a crit pt greater than x_i = 0
         I <- if (lam[tau] < lam[tau - 1]) {
@@ -268,25 +268,37 @@ allocate <- function(F, Q, w, K,
       lamL <- lam[tau]
     }
     xs[[tau]] <- x
-    if (tau > 25) {
-      if (xis %>% map_dbl(~sum(abs(diff(tail(.,3))))) %>% max() < .001) break
-    }
+    # if (tau > 25) {
+    #   if (xis %>% map_dbl(~sum(abs(diff(tail(.,3))))) %>% max() < .001) break
+    # }
   }
   if ((abs((sum(w*x) - K)/K) > eps_K)) {
-    x_L <- x_U <- x
-    for (j in 1:tau) {
-      if (j == tau) {
-        stop("Something went very wrong")
+    if (lamU <= eps_lam) {
+      if (sum(w*x) > K) {
+        stop("strange situation")
       }
-      x_L <- pmin(x_L, xs[[tau - j]])
-      x_U <- pmax(x_U, xs[[tau - j]])
       Delta <- function(t) {
-        sum(w * ((1 - t) * x_L + t * x_U)) - K
+        sum(w*t*x) - K
       }
-      if ((Delta(0) < 0) & (Delta(1) > 0)) break
+      t_star <- uniroot(f = Delta, interval = c(1,2), extendInt = "upX")$root
+      x <- t_star*x
+    } else {
+      x_L <- x_U <- x
+      for (j in 1:tau) {
+        if (j == tau + 1) {
+          stop("Something went very wrong")
+        }
+        x_L <- pmin(x_L, xs[[tau - j]])
+        x_U <- pmax(x_U, xs[[tau - j]])
+        Delta <- function(t) {
+          sum(w * ((1 - t) * x_L + t * x_U)) - K
+        }
+        if ((Delta(0) < 0) & (Delta(1) > 0))
+          break
+      }
+      t_star <- uniroot(f = Delta, interval = c(0, 1))$root
+      x <- (1-t_star)*x_L + t_star*x_U
     }
-    t_star <- uniroot(f = Delta, interval = c(0,1))$root
-    x <- (1-t_star)*x_L + t_star*x_U
   }
   if (Trace) {
     return(list(x = x, xs = xs, xis = xis, lambdas = lam, meb = Lambda))
@@ -300,9 +312,16 @@ oracle_allocate <- function(y, w, K,
                             dg = 1,
                             eps_K, eps_lam = .001, Trace = FALSE) {
   allocate(
-    F = function(x) 0,
-    Q = map(y, function(y) function(p) y),
-    w, K, kappa, alpha, dg, eps_K, eps_lam, Trace
+    F = map(y, function(y) {function(x) {1*(x>=y)}}),
+    Q = map(y, function(y) {function(p) {y}}),
+    w = w,
+    K = K,
+    kappa = kappa,
+    alpha = alpha,
+    dg = dg,
+    eps_K = eps_K,
+    eps_lam = eps_lam,
+    Trace = Trace
   )
 }
 
@@ -312,9 +331,15 @@ oracle_alloscore <- function(y, w, K,
                              eps_K,
                              eps_lam = .001,
                              g = function(u) u) {
-  oracle_allos <- oracle_allocate(y, w, K,
-                    kappa, alpha,
-                    dg, eps_K, eps_lam)
+  oracle_allos <- oracle_allocate(
+    y = y,
+    w = w,
+    K = K,
+    kappa = kappa,
+    alpha = alpha,
+    dg = dg,
+    eps_K = eps_K,
+    eps_lam = eps_lam)
   gpl <- gpl_loss_fun(g, kappa, alpha)
   score <- sum(gpl(oracle_allos, y))
   return(score)

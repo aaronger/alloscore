@@ -144,7 +144,4 @@ plotdat <- function(dat) {
   p_lam + p_loss + plot_layout(ncol=1)
 }
 
-p + map(5, function(i) geom_line(
-  aes(x = x, y = plt_dat$Eloss[[i]](x), color = plt_dat$name[[i]])))
-
 plotdat(dat)

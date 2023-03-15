@@ -53,14 +53,14 @@ allos <- with(fhosp1 %>% filter(model == "COVIDhub-ensemble"), allocate(
       dg = 1,
       eps_K = .01,
       eps_lam = .001,
-      Trace = TRUE
+      Trace = FALSE
     ))
 ggplot() + xlim(0,500) +map(1:length(allos$meb), ~geom_function(fun = allos$meb[[.]]))
 
 with(fhosp1 %>% filter(model == "CMU-TimeSeries"), oracle_allocate(
   y = value,
   w = 1,
-  K = 100,
+  K = 1000,
   kappa = 1,
   alpha = 1,
   dg = 1,
