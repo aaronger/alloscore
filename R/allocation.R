@@ -3,6 +3,58 @@
 #' @importFrom dplyr mutate
 NULL
 
+#' Basic g-linear loss for under-prediction of an outcome y
+#'
+#' @param g a non-decreasing function
+#'
+#' @return function of prediction x and outcome y that only penalizes under-prediction
+#' @export
+#'
+#' @examples
+under_loss <- function(g = function(u) {u}) {
+  function(x,y) {pmax(g(y) - g(x), 0)}
+}
+
+#' Basic expected g-linear loss for under-prediction of a random outcome Y
+#'
+#' @param dg derivative of g, probably will work even with discontinuities
+#' @param F predictive cdf of an outcome Y
+#' @return function of prediction x giving expected g-linear loss for under-predicting Y~F
+#' @export
+#'
+#' @examples
+expected_under_loss <- function(dg = function(y) {1}, F) {
+  Vectorize(function(x) {
+    integrate(f = function(y) {(1-F(y))*dg(y)}, lower = x, upper = Inf, rel.tol = .001)$value
+    })
+}
+
+#' Basic g-linear loss for over-prediction of an outcome y
+#'
+#' @param g a non-decreasing function
+#'
+#' @return function of prediction x and outcome y that only penalizes over-prediction
+#' @export
+#'
+#' @examples
+over_loss <- function(g = function(u) {u}) {
+  function(x,y) {pmax(g(x) - g(y), 0)}
+}
+
+#' Basic expected g-linear loss for over-prediction of a random outcome Y
+#'
+#' @param dg derivative of g, probably will work even with discontinuities
+#' @param F predictive cdf of an outcome Y
+#' @return function of prediction x giving expected g-linear loss for over-predicting Y~F
+#' @export
+#'
+#' @examples
+expected_over_loss <- function(dg = function(y) {1}, F) {
+  Vectorize(function(x) {
+    integrate(f = function(y) {F(y)*dg(y)}, lower = Inf, upper = x, rel.tol = .001)$value
+    })
+}
+
 #' Create generalized piecewise linear (gpl) scoring/loss function,
 #' which in general need not be piecewise linear
 #'
@@ -11,45 +63,45 @@ NULL
 #' @param alpha normalized loss when outcome y exceeds forecast x
 #' @param U loss when outcome y exceeds forecast x; equals kappa*alpha
 #' @param O cost when forecast x exceeds outcome y; equals kappa*(1-alpha)
+#' @param const an added constant, defaults to 0 for which gpl loss function `L` will have `L(x,x) = 0`
 #' @return function with arguments `x` and `y` giving loss
 #' @export
-gpl_loss_fun <- function(g = function(u) {u}, kappa = 1, alpha, O, U, const = 0) {
+gpl_loss_fun <- function(g = function(u) {u},
+                         kappa = 1, alpha, O, U, const = 0) {
   if (!xor(is_missing(U), is_missing(alpha))) {
     stop("Either U or alpha must be specified, but not both")
   }
   if (!is_missing(U)) {
-    gpl_loss <- function(x, y) {
-      scale * (O * pmax(g(x) - g(y), 0) + U * pmax(g(y) - g(x), 0)) + const
-    }
+    function(x, y) {O*over_loss(g)(x,y) + U*under_loss(g)(x,y) + const}
   }
   if (!is_missing(alpha)) {
-    gpl_loss <- function(x, y) {
-      kappa * ((1 - alpha) * pmax(g(x) - g(y), 0) + alpha * pmax(g(y) - g(x), 0)) + const
-    }
+    function(x, y) {kappa*((1-alpha)*over_loss(g)(x,y) + alpha*under_loss(g)(x,y)) + const}
   }
-  return(gpl_loss)
 }
 
 #' Create gpl expected loss function
 #'
-#' @param ... passed to gpl_loss_fun
-#' @param gpl_loss specified loss function if ... missing
+#' @param dg derivative of gpl function
 #' @param F predictive CDF
+#' @param kappa scale factor
+#' @param alpha normalized loss when outcome y exceeds forecast x
+#' @param U loss when outcome y exceeds forecast x; equals kappa*alpha
+#' @param O cost when forecast x exceeds outcome y; equals kappa*(1-alpha)
 #' @return function with argument x giving the expected loss with respect to the
 #'  distribution F
 #' @export
-gpl_loss_exp_fun <- function(..., gpl_loss = NULL, F) {
-  if (is.null(gpl_loss)) {
-    gpl_loss <- gpl_loss_fun(...)
+gpl_loss_exp_fun <- function(dg = function(u) {1}, F,
+                              kappa = 1, alpha, O, U,
+                              const = 0) {
+  if (!xor(is_missing(U), is_missing(alpha))) {
+    stop("Either U or alpha must be specified, but not both")
   }
-  dF <- function(y) min(numDeriv::grad(F, y), 1e+4)
-  sbar <- function(x) {
-    map_dbl(x, function(.x)
-      integrate(
-        f = function(y) gpl_loss(.x, y) * dF(y), lower = -Inf, upper = Inf
-      )$value)
+  if (!is_missing(U)) {
+    function(x) {O*expected_over_loss(dg,F)(x) + U*expected_under_loss(dg,F)(x)}
   }
-  return(sbar)
+  if (!is_missing(alpha)) {
+    function(x) {kappa*((1-alpha)*expected_over_loss(dg,F)(x) + alpha*expected_under_loss(dg,F)(x))}
+  }
 }
 
 #' Create function to calculate the marginal expected benefit of allocating an

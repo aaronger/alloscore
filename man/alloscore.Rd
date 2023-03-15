@@ -17,7 +17,8 @@ alloscore(
   eps_K,
   eps_lam,
   g = NULL,
-  against_oracle = TRUE
+  against_oracle = TRUE,
+  verbose = FALSE
 )
 }
 \arguments{

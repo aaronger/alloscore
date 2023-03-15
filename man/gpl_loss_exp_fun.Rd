@@ -4,18 +4,32 @@
 \alias{gpl_loss_exp_fun}
 \title{Create gpl expected loss function}
 \usage{
-gpl_loss_exp_fun(..., gpl_loss = NULL, f)
+gpl_loss_exp_fun(
+  dg = function(u) {     1 },
+  F,
+  kappa = 1,
+  alpha,
+  O,
+  U,
+  const = 0
+)
 }
 \arguments{
-\item{...}{passed to gpl_loss_fun}
+\item{dg}{derivative of gpl function}
 
-\item{gpl_loss}{specified loss function if ... missing}
+\item{F}{predictive CDF}
 
-\item{f}{probability density}
+\item{kappa}{scale factor}
+
+\item{alpha}{normalized loss when outcome y exceeds forecast x}
+
+\item{O}{cost when forecast x exceeds outcome y; equals kappa*(1-alpha)}
+
+\item{U}{loss when outcome y exceeds forecast x; equals kappa*alpha}
 }
 \value{
 function with argument x giving the expected loss with respect to the
-distribution f
+distribution F
 }
 \description{
 Create gpl expected loss function
