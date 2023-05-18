@@ -114,6 +114,8 @@ gpl_loss_exp_fun <- function(dg = function(u) {1}, F,
 #'
 #' @return a function with argument x that calculates the marginal expected benefit
 #' @export
+#' @details
+#' Note that this is minus the derivative of the expected score \eqn{\overline{s}_F}
 #'
 #' @examples
 margexb_fun <- function(F, kappa = 1, alpha, w, dg = 1, q_scale = 1,...) {
@@ -161,6 +163,7 @@ find_linear_intervals <- function(Lambda, q, grid_size = 1000, tol = min(.001, 1
 #' @param eps_lam
 #' @param point_mass_window
 #' @param Trace logical, record iterations
+#' @param Verbose logical, echo K and report number of iterations required to find allocation
 #'
 #' @return If `Trace` is `FALSE`, a numeric vector of length `N` givig the
 #'  optimal allocations. If `Trace` is `TRUE`, a named list with entries:
@@ -229,35 +232,39 @@ allocate <- function(F, Q, w, K,
     tau <- tau + 1
     lam[tau] <- (lamL + lamU)/2
     for (i in 1:N) {
-      #if (tau==14) browser()
-      if (lam[tau] <= Lambda[[i]](0)) {
-      # i.e., if we can expect a crit pt greater than x_i = 0
-        I <- if (lam[tau] < lam[tau - 1]) {
-          c(x[i] * (1-point_mass_window), qs[i])
-        } else
-        {
-          c(0, x[i] * (1+point_mass_window))
-        }
-        # i.e., if lam has decreased we need to look closer to the quantile,
-        # and if not we need to look further toward 0
-        lam_diff = function(xi) {
+      if (lam[tau] > Lambda[[i]](0)) {
+        # then lam gives a negative quantile on i so we allocate nothing at this iteration
+        x[i] <- 0
+      } else {
+        # we should expect a critical pt greater than x_i = 0 and write the ith
+        # component of the gradient equation
+        lam_grad = function(xi) {
           Lambda[[i]](xi) - lam[tau]
         }
-        # if Lambda[[i]](x) crosses lam for x < w^-1*2K adjust x[i] to root
-        # otherwise leave unchanged which will cause lam to increase on next step
-        if (lam_diff(I[2]) < 0) {
+        # obtain a search interval in which to look for a root of lam_grad
+        if (lam[tau] < lam[tau - 1]) {
+          # if lam has decreased we need to look closer to the quantile
+          I <- c(x[i] * (1-point_mass_window), qs[i])
+        } else {
+          # and if not we need to look further toward 0
+          I <- c(0, x[i] * (1+point_mass_window))
+        }
+        # lam_grad is a decreasing function so we can check its sign
+        # on the right endpoint of I to see
+        # if it has a root < w^-1*2K.
+        if (lam_grad(I[2]) < 0) {
+        # then adjust x[i] to that root.
+        # if (tau==6) browser() # for debugging
           tryCatch(
-            x[i] <- uniroot(f = lam_diff, interval = I)$root,
+            x[i] <- uniroot(f = lam_grad, interval = I)$root,
             error = function(e) {
               message("error at tau = ", tau, "  i = ", i)
-              #browser()
+              browser()
               stop(e)
             }
           )
         }
-      }
-      else {
-        x[i] <- 0
+        # Otherwise leave x[i] unchanged which will cause lam to increase on next step
       }
       xis[[i]][tau] <- x[i]
     }

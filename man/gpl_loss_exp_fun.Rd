@@ -5,7 +5,9 @@
 \title{Create gpl expected loss function}
 \usage{
 gpl_loss_exp_fun(
-  dg = function(u) {     1 },
+  dg = function(u) {
+     1
+ },
   F,
   kappa = 1,
   alpha,

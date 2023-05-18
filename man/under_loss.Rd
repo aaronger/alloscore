@@ -4,9 +4,11 @@
 \alias{under_loss}
 \title{Basic g-linear loss for under-prediction of an outcome y}
 \usage{
-under_loss(g = function(u) {
-    u
-})
+under_loss(
+  g = function(u) {
+     u
+ }
+)
 }
 \arguments{
 \item{g}{a non-decreasing function}

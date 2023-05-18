@@ -32,3 +32,6 @@ a function with argument x that calculates the marginal expected benefit
 Create function to calculate the marginal expected benefit of allocating an
 additional unit of resources to a given target.
 }
+\details{
+Note that this is minus the derivative of the expected score \eqn{\overline{s}_F}
+}

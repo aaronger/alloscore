@@ -5,9 +5,16 @@
 \title{Create generalized piecewise linear (gpl) scoring/loss function,
 which in general need not be piecewise linear}
 \usage{
-gpl_loss_fun(g = function(u) {
-    u
-}, kappa = 1, alpha, O, U, const = 0)
+gpl_loss_fun(
+  g = function(u) {
+     u
+ },
+  kappa = 1,
+  alpha,
+  O,
+  U,
+  const = 0
+)
 }
 \arguments{
 \item{g}{gpl function}

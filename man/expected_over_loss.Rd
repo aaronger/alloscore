@@ -4,9 +4,12 @@
 \alias{expected_over_loss}
 \title{Basic expected g-linear loss for over-prediction of a random outcome Y}
 \usage{
-expected_over_loss(dg = function(y) {
-    1
-}, F)
+expected_over_loss(
+  dg = function(y) {
+     1
+ },
+  F
+)
 }
 \arguments{
 \item{dg}{derivative of g, probably will work even with discontinuities}

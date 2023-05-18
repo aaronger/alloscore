@@ -4,9 +4,11 @@
 \alias{over_loss}
 \title{Basic g-linear loss for over-prediction of an outcome y}
 \usage{
-over_loss(g = function(u) {
-    u
-})
+over_loss(
+  g = function(u) {
+     u
+ }
+)
 }
 \arguments{
 \item{g}{a non-decreasing function}

@@ -37,6 +37,8 @@ coordinate}
 gpl function \code{g} for each coordinate}
 
 \item{Trace}{logical, record iterations}
+
+\item{Verbose}{logical, echo K and report number of iterations required to find allocation}
 }
 \value{
 If \code{Trace} is \code{FALSE}, a numeric vector of length \code{N} givig the
