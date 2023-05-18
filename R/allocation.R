@@ -198,7 +198,7 @@ allocate <- function(F, Q, w, K,
   Lambda <- pmap(largs[names(largs) != "Q"], margexb_fun)
   # initialize allocation at q_i if alpha_i < 1 or something big enough to
   # violate constraint if not
-  qs <- map2_dbl(Q, alpha, exec)
+  qs <- map2_dbl(Q, alpha, exec) 
   qs[qs==Inf] <- (w^(-1)*rep(1,N)*2*K)[qs==Inf]
   x <- qs
   xs <- list(x)
@@ -249,12 +249,8 @@ allocate <- function(F, Q, w, K,
           # and if not we need to look further toward 0
           I <- c(0, x[i] * (1+point_mass_window))
         }
-        # lam_grad is a decreasing function so we can check its sign
-        # on the right endpoint of I to see
-        # if it has a root < w^-1*2K.
-        if (lam_grad(I[2]) < 0) {
+        if (lam_grad(I[1]) * lam_grad(I[2]) < 0) {
         # then adjust x[i] to that root.
-        # if (tau==6) browser() # for debugging
           tryCatch(
             x[i] <- uniroot(f = lam_grad, interval = I)$root,
             error = function(e) {
