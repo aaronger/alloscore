@@ -150,6 +150,8 @@ find_linear_intervals <- function(Lambda, q, grid_size = 1000, tol = min(.001, 1
 
 #' Allocate to minimize expected gpl loss under forecasts F with constraint K
 #'
+#' @param df data frame containing columns for other list arguments which are used only when
+#'  those arguments (e.g. `F`) are not passed directly
 #' @param F list of cdf functions for forecast distributions
 #' @param Q list of quantile functions for forecast distributions
 #' @param w numeric vector with cost per unit resource allocated to each
@@ -173,13 +175,15 @@ find_linear_intervals <- function(Lambda, q, grid_size = 1000, tol = min(.001, 1
 #' @export
 #'
 #' @examples
-allocate <- function(F, Q, w, K,
-                     kappa = 1, alpha,
+allocate <- function(df = NULL, F, Q, w = 1, K,
+                     kappa = 1, alpha = 1,
                      dg = 1,
-                     eps_K, eps_lam,
+                     eps_K = .01,
+                     eps_lam = 1e-5,
                      point_mass_window = .001,
                      Trace = FALSE,
                      verbose = FALSE) {
+  if (!is.null(df)) get_args_from_df(df)
   # validation
   largs <- list(F = F, Q = Q, kappa = kappa, alpha = alpha, dg = dg, w = w)
   N <-  max(map_int(largs, length))
@@ -198,7 +202,7 @@ allocate <- function(F, Q, w, K,
   Lambda <- pmap(largs[names(largs) != "Q"], margexb_fun)
   # initialize allocation at q_i if alpha_i < 1 or something big enough to
   # violate constraint if not
-  qs <- map2_dbl(Q, alpha, exec) 
+  qs <- map2_dbl(Q, alpha, exec)
   qs[qs==Inf] <- (w^(-1)*rep(1,N)*2*K)[qs==Inf]
   x <- qs
   xs <- list(x)
@@ -333,7 +337,8 @@ oracle_alloscore <- function(y, w, K,
                              dg = 1,
                              eps_K,
                              eps_lam = .001,
-                             g = function(u) u) {
+                             g = function(u) u,
+                             components = FALSE) {
   oracle_allos <- oracle_allocate(
     y = y,
     w = w,
@@ -344,42 +349,70 @@ oracle_alloscore <- function(y, w, K,
     eps_K = eps_K,
     eps_lam = eps_lam)
   gpl <- gpl_loss_fun(g, kappa, alpha)
-  score <- sum(gpl(oracle_allos, y))
+  component_scores <- gpl(oracle_allos, y)
+  score <- sum(component_scores)
+  if (components) {
+    return(list(score = score, components = component_scores))
+  }
   return(score)
 }
 
 #' Obtain the allocation score for a given forecast distribution F for the
 #' observed data value y in a constrained allocation problem.
 #'
+#' @param df data frame containing columns for other list arguments which are used only when
+#'  those arguments (e.g. `F`) are not passed directly
 #' @param y numeric observed data value
 #' @param g list of functions that calculate the gpl function for each coordinate;
 #'  default value of NULL causes pinball loss to be used
 #' @param against_oracle logical; if `TRUE`, scores are normalized relative to
 #'  an oracle forecaster
+#' @param components logical; if TRUE, the components of the score (relative to the components
+#' of the oracle score if `against_oracle` is `TRUE`) are also returned
 #' @inheritParams allocate
-alloscore <- function(y, F, Q, w, K,
-                      kappa = 1, alpha,
+#' @export
+alloscore <- function(df = NULL, y, F, Q, w = 1, K,
+                      kappa = 1, alpha = 1,
                       dg = 1,
-                      eps_K,
-                      eps_lam,
+                      eps_K = .01,
+                      eps_lam = 1e-5,
                       g = NULL,
                       against_oracle = TRUE,
-                      verbose = FALSE) {
+                      verbose = FALSE,
+                      components = FALSE) {
+  if (!is.null(df)) get_args_from_df(df)
   if (dg == 1) {
     if (!is.null(g)) {
       stop("derivatives of non-identity gpl functions must be specified")
     }
     g <- function(u) u
   }
-  allos <- allocate(F, Q, w, K,
-                    kappa, alpha,
-                    dg, eps_K, eps_lam, verbose = verbose)
+  allos <- allocate(
+    F = F,
+    Q = Q,
+    w = w,
+    K = K,
+    kappa = kappa,
+    alpha = alpha,
+    dg = dg,
+    eps_K = eps_K,
+    eps_la = eps_lam,
+    verbose = verbose)
   gpl <- gpl_loss_fun(g, kappa, alpha)
-  score <- sum(gpl(allos, y))
+  component_scores <- gpl(allos, y)
+  score <- sum(component_scores)
   if (against_oracle) {
-    score <- score - oracle_alloscore(y, w, K,
-                                      kappa, alpha,
-                                      dg, eps_K, eps_lam, g)
+    oscore <- oracle_alloscore(y, w, K,
+                               kappa, alpha,
+                               dg, eps_K, eps_lam, g,
+                               components = components)
+    score <- score - oscore[[1]]
+    if (components) {
+      component_scores <- component_scores - oscore[[2]]
+    }
+  }
+  if (components) {
+    return(list(score = score, components = component_scores))
   }
   return(score)
 }

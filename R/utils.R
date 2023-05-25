@@ -134,3 +134,14 @@ stdize_met_params <- function(C, L) {
     alpha = 1-C/L
   ))
 }
+
+#' Utility function to make data frames of easier to work with
+get_args_from_df <- function(df) {
+  e <- caller_env()
+  missing_args <- names(e)[map_lgl(as.list(e), is_missing)]
+  for (name in missing_args) {
+    if (name %in% names(e)) {
+      assign(name, df[[name]], envir = e)
+    }
+  }
+}

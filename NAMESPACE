@@ -2,6 +2,7 @@
 
 export(add_pdqr_funs)
 export(allocate)
+export(alloscore)
 export(expected_over_loss)
 export(expected_under_loss)
 export(gpl_loss_exp_fun)

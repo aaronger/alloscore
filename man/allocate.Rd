@@ -5,21 +5,25 @@
 \title{Allocate to minimize expected gpl loss under forecasts F with constraint K}
 \usage{
 allocate(
+  df = NULL,
   F,
   Q,
-  w,
+  w = 1,
   K,
   kappa = 1,
-  alpha,
+  alpha = 1,
   dg = 1,
-  eps_K,
-  eps_lam,
+  eps_K = 0.01,
+  eps_lam = 1e-05,
   point_mass_window = 0.001,
   Trace = FALSE,
   verbose = FALSE
 )
 }
 \arguments{
+\item{df}{data frame containing columns for other list arguments which are used only when
+those arguments (e.g. \code{F}) are not passed directly}
+
 \item{F}{list of cdf functions for forecast distributions}
 
 \item{Q}{list of quantile functions for forecast distributions}

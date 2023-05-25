@@ -6,22 +6,27 @@
 observed data value y in a constrained allocation problem.}
 \usage{
 alloscore(
+  df = NULL,
   y,
   F,
   Q,
-  w,
+  w = 1,
   K,
   kappa = 1,
-  alpha,
+  alpha = 1,
   dg = 1,
-  eps_K,
-  eps_lam,
+  eps_K = 0.01,
+  eps_lam = 1e-05,
   g = NULL,
   against_oracle = TRUE,
-  verbose = FALSE
+  verbose = FALSE,
+  components = FALSE
 )
 }
 \arguments{
+\item{df}{data frame containing columns for other list arguments which are used only when
+those arguments (e.g. \code{F}) are not passed directly}
+
 \item{y}{numeric observed data value}
 
 \item{F}{list of cdf functions for forecast distributions}
@@ -45,6 +50,9 @@ default value of NULL causes pinball loss to be used}
 
 \item{against_oracle}{logical; if \code{TRUE}, scores are normalized relative to
 an oracle forecaster}
+
+\item{components}{logical; if TRUE, the components of the score (relative to the components
+of the oracle score if \code{against_oracle} is \code{TRUE}) are also returned}
 }
 \description{
 Obtain the allocation score for a given forecast distribution F for the
