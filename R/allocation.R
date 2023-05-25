@@ -268,13 +268,17 @@ allocate <- function(df = NULL, F, Q, w = 1, K,
       }
       xis[[i]][tau] <- x[i]
     }
+    # check whether we have under- or over-shot K and narrow search interval accordingly
     if (sum(w*x) < K) {
+      # we should try smaller lambdas that don't take us so far back to 0 so we lower lamU
       lamU <- lam[tau]
     }
     else {
+      # we need larger lambdas that further reduce allocations so we raise lamL
       lamL <- lam[tau]
     }
     xs[[tau]] <- x
+    # old code for dealing with some convergence issue
     # if (tau > 25) {
     #   if (xis %>% map_dbl(~sum(abs(diff(tail(.,3))))) %>% max() < .001) break
     # }
