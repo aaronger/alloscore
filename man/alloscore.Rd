@@ -36,7 +36,7 @@ those arguments (e.g. \code{F}) are not passed directly}
 \item{w}{numeric vector with cost per unit resource allocated to each
 coordinate}
 
-\item{K}{constraint on total provision}
+\item{K}{vector of constraints on total provision}
 
 \item{kappa}{scale factor}
 

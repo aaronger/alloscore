@@ -1,6 +1,7 @@
-#' @importFrom purrr map map2 pmap map_dbl map_int partial
-#' @importFrom rlang exec is_missing is_list
-#' @importFrom dplyr mutate
+#' @importFrom purrr map map2 pmap map_dbl map2_dbl map_int partial map_lgl
+#' @importFrom rlang exec is_missing is_list caller_env
+#' @importFrom dplyr mutate arrange
+#' @importFrom tibble tibble
 NULL
 
 #' Basic g-linear loss for under-prediction of an outcome y
@@ -156,7 +157,7 @@ find_linear_intervals <- function(Lambda, q, grid_size = 1000, tol = min(.001, 1
 #' @param Q list of quantile functions for forecast distributions
 #' @param w numeric vector with cost per unit resource allocated to each
 #'  coordinate
-#' @param K constraint on total provision
+#' @param K vector of constraints on total provision
 #' @param kappa scale factor
 #' @param alpha normalized loss when outcome y exceeds forecast x
 #' @param dg numeric constant(s) or function(s) to calculate the derivative of the
@@ -164,14 +165,15 @@ find_linear_intervals <- function(Lambda, q, grid_size = 1000, tol = min(.001, 1
 #' @param eps_K
 #' @param eps_lam
 #' @param point_mass_window
-#' @param Trace logical, record iterations
-#' @param Verbose logical, echo K and report number of iterations required to find allocation
 #'
-#' @return If `Trace` is `FALSE`, a numeric vector of length `N` givig the
-#'  optimal allocations. If `Trace` is `TRUE`, a named list with entries:
-#'    - `x`: numeric vector of length `N` giving the optimal allocations
-#'    - `xs`: list of values of `x` over the course of optimization
-#'    - `lambdas`: numeric vector of values of lambda over the course of optimization
+#' @return data frame with (list-)columns
+#' \describe{
+#'   \item{K}{constraints}
+#'   \item{x}{allocations for constraints}
+#'   \item{xs}{array with allocations at each iteration as rows}
+#'   \item{lam_seq}{sequence of Lagrange multipliers tested at each iteration}
+#' }
+
 #' @export
 #'
 #' @examples
@@ -198,124 +200,159 @@ allocate <- function(df = NULL, F, Q, w = 1, K,
   if (any(!map_int(largs, length) == N)) {
     stop("parameter lists do not have matching lengths")
   }
-  # get lambda_i's
-  Lambda <- pmap(largs[names(largs) != "Q"], margexb_fun)
+
   # initialize allocation at q_i if alpha_i < 1 or something big enough to
   # violate constraint if not
   qs <- map2_dbl(Q, alpha, exec)
-  qs[qs==Inf] <- (w^(-1)*rep(1,N)*2*K)[qs==Inf]
-  x <- qs
-  xs <- list(x)
-  xis <- as.list(x)
-  # return this initial allocation at quantiles if it satisfies constraint
-  if (sum(w*x) < K) {
-    if (Trace) {
-      return(list(x = x, xs = xs, lambdas = 0))
-    }
-    return(x)
+  qs[qs==Inf] <- (w^(-1)*rep(1,N)*2*max(K))[qs==Inf]
+
+  # set up a data frame to track iterations for all K
+  Kdf <- tibble(
+    K = K,
+    xs = list(qs), # for iterations
+    x = xs, # for final allocation
+    qs_OK = map(x, ~sum(w*.)) < K,
+    converged = FALSE
+  ) %>% arrange(K)
+
+  out <- Kdf %>% dplyr::filter(qs_OK) %>% mutate(converged = TRUE)
+  Kdf <- Kdf %>% dplyr::filter(!qs_OK)
+  # return if quantiles satisfy all constraint levels
+  if (nrow(Kdf) == 0) {
+    return(out)
   }
-  # if not, initialize binary search interval endpoints at lambda = MEB = 0 (corresponding to
+  # if not, get lmabda_i'a
+  Lambda <- pmap(largs[names(largs) != "Q"], margexb_fun)
+  # store ther values at boundary
+  Lambda0 <- map2_dbl(Lambda, 0, exec)
+  #create columns for binary search interval endpoints at lambda = MEB = 0 (corresponding to
   # allocation at quantile) and the maximum over target set of MEB's evaluated at x = 0
   # (corresponding to the maximum MEB if the allocations were all reduced as much as possible - to 0)
-  lamL <- 0
-  lamU <- max(map2_dbl(Lambda, 0, exec))
-  lamU <- lamU*(1+2*eps_lam)
-  # return x = 0 if there is no marginal benefit to allocating more than 0 in any component
-  if (lamU <= 0) {
-    if (Trace) {
-      return(list(x = rep(0, N), xs = xs, lambdas = NA))
-    }
-    return(rep(0, N))
-  }
-  # initialize sequence of search iterates at the 1st (and now rejected) value 0
-  lam <- c(0)
-  # create counter for labeling iterates, starting with the soon to be calculated 2nd
+  # as well as columns for the current lamda and previous lambda iterates
+  Kdf <- Kdf %>% mutate(
+    lamL = 0,
+    lamL_seq = list(0),
+    lamU = max(Lambda0)*(1+2*eps_lam),
+    lamU_seq = list(lamU),
+    lam = 0,
+    lam_seq = list(0),
+    lam_prev = 0
+  )
+  # store
+
+  # create counter for labeling iterates
   tau <- 1
-  # main loop
-  while (((lamU - lamL)/(lamU) > eps_lam) & (lamU > eps_lam)) {
-    tau <- tau + 1
-    lam[tau] <- (lamL + lamU)/2
-    for (i in 1:N) {
-      if (lam[tau] > Lambda[[i]](0)) {
-        # then lam gives a negative quantile on i so we allocate nothing at this iteration
-        x[i] <- 0
-      } else {
-        # we should expect a critical pt greater than x_i = 0 and write the ith
-        # component of the gradient equation
-        lam_grad = function(xi) {
-          Lambda[[i]](xi) - lam[tau]
-        }
-        # obtain a search interval in which to look for a root of lam_grad
-        if (lam[tau] < lam[tau - 1]) {
-          # if lam has decreased we need to look closer to the quantile
-          I <- c(x[i] * (1-point_mass_window), qs[i])
+
+  # return x = 0 if there is no marginal benefit to allocating more than 0 in any component
+  if (Kdf$lamU[1] <= 0) {
+    Kdf$x <- list(rep(0, N))
+    out <- rbind(out, Kdf) %>% arrange(K) # would out ever be non-empty here?
+    return(out)
+  }
+
+  while (nrow(Kdf) > 0) {
+    Kdf <- Kdf %>% mutate(
+      # calculate next lambdas
+      lam = (lamL + lamU)/2,
+      # store them
+      lam_seq = map2(lam_seq, lam, function(lam_seq, lam) c(lam_seq, lam))
+    )
+    lams <- unique(Kdf$lam)
+    for (lam_tau in lams) {
+      Kdf_lam <- Kdf %>% dplyr::filter(lam == lam_tau)
+      x_tau <- Kdf_lam$x[[1]] # this is the whole point of using Kdf
+      stopifnot(length(lam_prev <- unique(Kdf_lam$lam_prev)) == 1) # sanity check
+      for (i in 1:N) {
+        if (lam_tau > Lambda0[i]) {
+          # then lam gives a negative quantile on i so we allocate nothing at this iteration
+          x_tau[i] <- 0
         } else {
-          # and if not we need to look further toward 0
-          I <- c(0, x[i] * (1+point_mass_window))
+          # we should expect a critical pt greater than x_tau[i] = 0 and write the ith
+          # component of the gradient equation
+          lam_grad = function(xi) {
+            Lambda[[i]](xi) - lam_tau
+          }
+          # obtain a search interval in which to look for a root of lam_grad
+          if (lam_tau < lam_prev) {
+            # if lam has decreased we need to look closer to the quantile
+            I <- c(x_tau[i] * (1 - point_mass_window), qs[i])
+          } else {
+            # and if not we need to look further toward 0
+            I <- c(0, x_tau[i] * (1 + point_mass_window))
+          }
+          if (lam_grad(I[1]) * lam_grad(I[2]) < 0) {
+            # then adjust x_tau[i] to that root.
+            x_tau[i] <- uniroot(f = lam_grad, interval = I)$root
+            # tryCatch(
+            #   x_tau[i] <- uniroot(f = lam_grad, interval = I)$root,
+            #   error = function(e) {
+            #     message("error at tau = ", tau, "  i = ", i)
+            #     browser()
+            #     stop(e)
+            #   }
+            # )
+          }
+          # Otherwise leave x_tau[i] unchanged which will cause lam to increase on next step
         }
-        if (lam_grad(I[1]) * lam_grad(I[2]) < 0) {
-        # then adjust x[i] to that root.
-          tryCatch(
-            x[i] <- uniroot(f = lam_grad, interval = I)$root,
-            error = function(e) {
-              message("error at tau = ", tau, "  i = ", i)
-              browser()
-              stop(e)
-            }
-          )
-        }
-        # Otherwise leave x[i] unchanged which will cause lam to increase on next step
       }
-      xis[[i]][tau] <- x[i]
+      Kdf_lam <- Kdf_lam %>% mutate(
+        x = list(x_tau),
+        xs = map(xs, ~rbind(., x_tau)),
+        lam_prev = lam_tau,
+        # check whether we have under- or over-shot K and narrow search interval accordingly
+        lamL = ifelse(sum(w*x_tau) > K, lam_tau, lamL),
+        lamL_seq = map2(lamL_seq, lamL, function(lamL_seq, lamL) c(lamL_seq, lamL)),
+        lamU = ifelse(sum(w*x_tau) <= K, lam_tau, lamU),
+        lamU_seq = map2(lamU_seq, lamU, function(lamU_seq, lamU) c(lamU_seq, lamU)),
+        # check if converged
+        converged = ((lamU - lamL)/(lamU) < eps_lam) | (lamU <= eps_lam)
+      )
+      Kdf[Kdf$lam == lam_tau,] <- Kdf_lam
     }
-    # check whether we have under- or over-shot K and narrow search interval accordingly
-    if (sum(w*x) < K) {
-      # we should try smaller lambdas that don't take us so far back to 0 so we lower lamU
-      lamU <- lam[tau]
-    }
-    else {
-      # we need larger lambdas that further reduce allocations so we raise lamL
-      lamL <- lam[tau]
-    }
-    xs[[tau]] <- x
+    out <- rbind(out, Kdf %>% dplyr::filter(converged))
+    Kdf <- Kdf %>% dplyr::filter(!converged)
+    tau <- tau + 1
+  }
+
     # old code for dealing with some convergence issue
     # if (tau > 25) {
     #   if (xis %>% map_dbl(~sum(abs(diff(tail(.,3))))) %>% max() < .001) break
     # }
-  }
-  if ((abs((sum(w*x) - K)/K) > eps_K)) {
-    if (lamU <= eps_lam) {
-      if (sum(w*x) > K) {
-        stop("strange situation")
-      }
-      Delta <- function(t) {
-        sum(w*t*x) - K
-      }
-      t_star <- uniroot(f = Delta, interval = c(1,2), extendInt = "upX")$root
-      x <- t_star*x
-    } else {
-      x_L <- x_U <- x
-      for (j in 1:tau) {
-        if (j == tau + 1) {
-          stop("Something went very wrong")
+  out <- out %>% mutate(x = pmap(list(x, K, xs),
+    function(x, K, xs) {
+      if ((abs((sum(w*x) - K)/K) > eps_K)) {
+        if (lamU <= eps_lam) {
+          if (sum(w*x) > K) {
+            stop("strange situation")
+          }
+          Delta <- function(t) {
+            sum(w*t*x) - K
+          }
+          t_star <- uniroot(f = Delta, interval = c(1,2), extendInt = "upX")$root
+          x <- t_star*x
+        } else {
+          browser()
+          x_L <- x_U <- x
+          iter_num <- dim(xs)[1]
+          for (j in 1:iter_num) {
+            if (j == iter_num + 1) {
+              stop("Something went very wrong")
+            }
+            x_L <- pmin(x_L, xs[[iter_num - j]])
+            x_U <- pmax(x_U, xs[[iter_num - j]])
+            Delta <- function(t) {
+              sum(w * ((1 - t) * x_L + t * x_U)) - K
+            }
+            if ((Delta(0) < 0) & (Delta(1) > 0))
+              break
+          }
+          t_star <- uniroot(f = Delta, interval = c(0, 1))$root
+          x <- (1-t_star)*x_L + t_star*x_U
         }
-        x_L <- pmin(x_L, xs[[tau - j]])
-        x_U <- pmax(x_U, xs[[tau - j]])
-        Delta <- function(t) {
-          sum(w * ((1 - t) * x_L + t * x_U)) - K
-        }
-        if ((Delta(0) < 0) & (Delta(1) > 0))
-          break
       }
-      t_star <- uniroot(f = Delta, interval = c(0, 1))$root
-      x <- (1-t_star)*x_L + t_star*x_U
-    }
-  }
-  if (Trace) {
-    return(list(x = x, xs = xs, xis = xis, lambdas = lam, meb = Lambda))
-  }
-  if (verbose) cat(K, tau, " ")
-  return(x)
+      return(x)
+    }))
+  return(out)
 }
 
 oracle_allocate <- function(y, w, K,

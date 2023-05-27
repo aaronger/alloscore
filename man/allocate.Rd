@@ -31,7 +31,7 @@ those arguments (e.g. \code{F}) are not passed directly}
 \item{w}{numeric vector with cost per unit resource allocated to each
 coordinate}
 
-\item{K}{constraint on total provision}
+\item{K}{vector of constraints on total provision}
 
 \item{kappa}{scale factor}
 
@@ -40,17 +40,15 @@ coordinate}
 \item{dg}{numeric constant(s) or function(s) to calculate the derivative of the
 gpl function \code{g} for each coordinate}
 
-\item{Trace}{logical, record iterations}
-
-\item{Verbose}{logical, echo K and report number of iterations required to find allocation}
+\item{point_mass_window}{}
 }
 \value{
-If \code{Trace} is \code{FALSE}, a numeric vector of length \code{N} givig the
-optimal allocations. If \code{Trace} is \code{TRUE}, a named list with entries:
-\itemize{
-\item \code{x}: numeric vector of length \code{N} giving the optimal allocations
-\item \code{xs}: list of values of \code{x} over the course of optimization
-\item \code{lambdas}: numeric vector of values of lambda over the course of optimization
+data frame with (list-)columns
+\describe{
+\item{K}{constraints}
+\item{x}{allocations for constraints}
+\item{xs}{array with allocations at each iteration as rows}
+\item{lam_seq}{sequence of Lagrange multipliers tested at each iteration}
 }
 }
 \description{
