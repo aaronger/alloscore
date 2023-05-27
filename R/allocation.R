@@ -182,9 +182,7 @@ allocate <- function(df = NULL, F, Q, w = 1, K,
                      dg = 1,
                      eps_K = .01,
                      eps_lam = 1e-5,
-                     point_mass_window = .001,
-                     Trace = FALSE,
-                     verbose = FALSE) {
+                     point_mass_window = .001) {
   if (!is.null(df)) get_args_from_df(df)
   # validation
   largs <- list(F = F, Q = Q, kappa = kappa, alpha = alpha, dg = dg, w = w)
@@ -222,7 +220,7 @@ allocate <- function(df = NULL, F, Q, w = 1, K,
     return(out)
   }
   # if not, get lmabda_i'a
-  Lambda <- pmap(largs[names(largs) != "Q"], margexb_fun)
+  Lambda <- pmap(largs[c("F", "kappa", "alpha", "dg", "w")], margexb_fun)
   # store ther values at boundary
   Lambda0 <- map2_dbl(Lambda, 0, exec)
   #create columns for binary search interval endpoints at lambda = MEB = 0 (corresponding to
@@ -283,14 +281,6 @@ allocate <- function(df = NULL, F, Q, w = 1, K,
           if (lam_grad(I[1]) * lam_grad(I[2]) < 0) {
             # then adjust x_tau[i] to that root.
             x_tau[i] <- uniroot(f = lam_grad, interval = I)$root
-            # tryCatch(
-            #   x_tau[i] <- uniroot(f = lam_grad, interval = I)$root,
-            #   error = function(e) {
-            #     message("error at tau = ", tau, "  i = ", i)
-            #     browser()
-            #     stop(e)
-            #   }
-            # )
           }
           # Otherwise leave x_tau[i] unchanged which will cause lam to increase on next step
         }
@@ -313,11 +303,7 @@ allocate <- function(df = NULL, F, Q, w = 1, K,
     Kdf <- Kdf %>% dplyr::filter(!converged)
     tau <- tau + 1
   }
-
-    # old code for dealing with some convergence issue
-    # if (tau > 25) {
-    #   if (xis %>% map_dbl(~sum(abs(diff(tail(.,3))))) %>% max() < .001) break
-    # }
+  # post-processing for plateaus, oracles in particular
   out <- out %>% mutate(x = pmap(list(x, K, xs),
     function(x, K, xs) {
       if ((abs((sum(w*x) - K)/K) > eps_K)) {
@@ -331,7 +317,6 @@ allocate <- function(df = NULL, F, Q, w = 1, K,
           t_star <- uniroot(f = Delta, interval = c(1,2), extendInt = "upX")$root
           x <- t_star*x
         } else {
-          browser()
           x_L <- x_U <- x
           iter_num <- dim(xs)[1]
           for (j in 1:iter_num) {
@@ -352,50 +337,51 @@ allocate <- function(df = NULL, F, Q, w = 1, K,
       }
       return(x)
     }))
+  out <- structure(out, w = w, kappa = kappa, alpha = alpha, dg = dg)
   return(out)
 }
 
-oracle_allocate <- function(y, w, K,
-                            kappa = 1, alpha,
-                            dg = 1,
-                            eps_K, eps_lam = .001, Trace = FALSE) {
+#' Allocate according to an oracle's knowledge of outcome y
+#'
+#' @param y
+#' @inheritParams allocate
+#'
+#' @return see `allocate`
+#' @export
+#'
+#' @examples
+oracle_allocate <- function(df = NULL, y, K, ...) {
   allocate(
+    df = df,
     F = map(y, function(y) {function(x) {1*(x>=y)}}),
     Q = map(y, function(y) {function(p) {y}}),
-    w = w,
     K = K,
-    kappa = kappa,
-    alpha = alpha,
-    dg = dg,
-    eps_K = eps_K,
-    eps_lam = eps_lam,
-    Trace = Trace
+    ...
   )
 }
 
-oracle_alloscore <- function(y, w, K,
-                             kappa = 1, alpha,
-                             dg = 1,
-                             eps_K,
-                             eps_lam = .001,
-                             g = function(u) u,
-                             components = FALSE) {
-  oracle_allos <- oracle_allocate(
-    y = y,
-    w = w,
-    K = K,
-    kappa = kappa,
-    alpha = alpha,
-    dg = dg,
-    eps_K = eps_K,
-    eps_lam = eps_lam)
+#' Score according to an oracle's knowledge of outcome y
+#'
+#' @param y
+#' @inheritParams alloscore
+#'
+#' @return see `alloscore`
+#' @export
+#'
+#' @examples
+oracle_alloscore <- function(df = NULL, y, K,
+                             kappa = 1, alpha = 1,
+                             g = function(u) u, ...) {
   gpl <- gpl_loss_fun(g, kappa, alpha)
-  component_scores <- gpl(oracle_allos, y)
-  score <- sum(component_scores)
-  if (components) {
-    return(list(score = score, components = component_scores))
-  }
-  return(score)
+  oracle_allocate(
+    df = df,
+    y = y,
+    K = K,
+    ...
+    ) %>% mutate(
+    components = map(x, function(x) gpl(x,y)),
+    score = map_dbl(components, sum)
+  )
 }
 
 #' Obtain the allocation score for a given forecast distribution F for the
@@ -411,6 +397,16 @@ oracle_alloscore <- function(y, w, K,
 #' @param components logical; if TRUE, the components of the score (relative to the components
 #' of the oracle score if `against_oracle` is `TRUE`) are also returned
 #' @inheritParams allocate
+#'
+#' @return a date frame of the form returned by `allocate` with additional columns for
+#' \itemize{
+#'   \item `components_raw`: the raw gpl losses in each location
+#'   \item `score_raw`: the sum of the raw components
+#'   \item `components_oracle`: the gpl losses of an oracle in each location
+#'   \item `score_oracle`: the sum of the oracle's components
+#'   \item `components`: forecaster's difference from the oracle
+#'   \item `score`: the forecaster's score minus the oracle's
+#' }
 #' @export
 alloscore <- function(df = NULL, y, F, Q, w = 1, K,
                       kappa = 1, alpha = 1,
@@ -418,9 +414,7 @@ alloscore <- function(df = NULL, y, F, Q, w = 1, K,
                       eps_K = .01,
                       eps_lam = 1e-5,
                       g = NULL,
-                      against_oracle = TRUE,
-                      verbose = FALSE,
-                      components = FALSE) {
+                      against_oracle = TRUE) {
   if (!is.null(df)) get_args_from_df(df)
   if (dg == 1) {
     if (!is.null(g)) {
@@ -428,7 +422,8 @@ alloscore <- function(df = NULL, y, F, Q, w = 1, K,
     }
     g <- function(u) u
   }
-  allos <- allocate(
+  # allocate
+  adf <- allocate(
     F = F,
     Q = Q,
     w = w,
@@ -437,23 +432,37 @@ alloscore <- function(df = NULL, y, F, Q, w = 1, K,
     alpha = alpha,
     dg = dg,
     eps_K = eps_K,
-    eps_la = eps_lam,
-    verbose = verbose)
+    eps_la = eps_lam)
+  # get the loss function
   gpl <- gpl_loss_fun(g, kappa, alpha)
-  component_scores <- gpl(allos, y)
-  score <- sum(component_scores)
+  # add component losses and resluting scores
+  adf <- adf %>% mutate(
+    components = map(x, function(x) gpl(x,y)),
+    score = map_dbl(components, sum)
+  )
   if (against_oracle) {
-    oscore <- oracle_alloscore(y, w, K,
-                               kappa, alpha,
-                               dg, eps_K, eps_lam, g,
-                               components = components)
-    score <- score - oscore[[1]]
-    if (components) {
-      component_scores <- component_scores - oscore[[2]]
-    }
+    oscore <- oracle_alloscore(
+      y = y,
+      w = w,
+      K = K,
+      kappa = kappa,
+      alpha = alpha,
+      dg = dg,
+      eps_K = eps_K,
+      eps_lam = eps_lam,
+      g = g)
+    adf <-
+      dplyr::left_join(adf, oscore[, c("K", "components", "score")], by = "K",
+                       suffix = c("", "_oracle")) %>%
+      mutate(
+        components_raw = components,
+        score_raw = score,
+        components = map2(components_raw, components_oracle,
+                          function(components_raw, components_oracle) {
+                            components_raw - components_oracle
+                          }),
+        score = score_raw - score_oracle
+      )
   }
-  if (components) {
-    return(list(score = score, components = component_scores))
-  }
-  return(score)
+  return(adf)
 }

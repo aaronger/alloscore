@@ -18,9 +18,7 @@ alloscore(
   eps_K = 0.01,
   eps_lam = 1e-05,
   g = NULL,
-  against_oracle = TRUE,
-  verbose = FALSE,
-  components = FALSE
+  against_oracle = TRUE
 )
 }
 \arguments{
@@ -53,6 +51,17 @@ an oracle forecaster}
 
 \item{components}{logical; if TRUE, the components of the score (relative to the components
 of the oracle score if \code{against_oracle} is \code{TRUE}) are also returned}
+}
+\value{
+a date frame of the form returned by \code{allocate} with additional columns for
+\itemize{
+\item \code{components_raw}: the raw gpl losses in each location
+\item \code{score_raw}: the sum of the raw components
+\item \code{components_oracle}: the gpl losses of an oracle in each location
+\item \code{score_oracle}: the sum of the oracle's components
+\item \code{components}: forecaster's difference from the oracle
+\item \code{score}: the forecaster's score minus the oracle's
+}
 }
 \description{
 Obtain the allocation score for a given forecast distribution F for the

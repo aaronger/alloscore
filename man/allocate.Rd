@@ -15,9 +15,7 @@ allocate(
   dg = 1,
   eps_K = 0.01,
   eps_lam = 1e-05,
-  point_mass_window = 0.001,
-  Trace = FALSE,
-  verbose = FALSE
+  point_mass_window = 0.001
 )
 }
 \arguments{
