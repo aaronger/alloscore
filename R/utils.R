@@ -135,7 +135,7 @@ stdize_met_params <- function(C, L) {
   ))
 }
 
-#' Utility function to make data frames of easier to work with
+#' Utility function to make data frames of forecasts easier to work with
 get_args_from_df <- function(df) {
   e <- caller_env()
   missing_args <- names(e)[map_lgl(as.list(e), is_missing)]
@@ -144,4 +144,47 @@ get_args_from_df <- function(df) {
       assign(name, df[[name]], envir = e)
     }
   }
+}
+
+#' Get a function of x from a string, e.g., "log(x)"
+get_function <- function(func) {
+  # Ensure 'x' is used as the variable name
+  if (!grepl("\\bx\\b", func)) {
+    stop("Variable 'x' must be used in the function string")
+  }
+  if (func == "x") {
+    return(function(x) x)
+  }
+  if (func == "log(x)") {
+    return(function(x) log(x))
+  }
+  if (func == "exp(x)") {
+    return(function(x) exp(x))
+  }
+  func_expr <- parse(text = func_str)
+  return(function(x) eval(func_expr))
+}
+
+#' Get the derivative of a function of x entered as a string, e.g., "log(x)"
+get_derivative <- function(func) {
+  # Ensure 'x' is used as the variable name
+  if (!grepl("\\bx\\b", func)) {
+    stop("Variable 'x' must be used in the function string")
+  }
+  if (func == "x") {
+    return(function(x) 1)
+  }
+  if (func == "log(x)") {
+    return(function(x) 1/x)
+  }
+  if (func == "exp(x)") {
+    return(function(x) exp(x))
+  }
+  # Turn string into an expression
+  expr <- parse(text = func)
+  # Differentiate
+  der_expr <- D(expr, "x")
+  # Convert to function
+  der_func <- function(x) eval(der_expr, envir = list(x = x))
+  return(der_func)
 }

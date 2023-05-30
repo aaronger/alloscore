@@ -2,10 +2,10 @@
 % Please edit documentation in R/utils.R
 \name{get_args_from_df}
 \alias{get_args_from_df}
-\title{Utility function to make data frames of easier to work with}
+\title{Utility function to make data frames of forecasts easier to work with}
 \usage{
 get_args_from_df(df)
 }
 \description{
-Utility function to make data frames of easier to work with
+Utility function to make data frames of forecasts easier to work with
 }

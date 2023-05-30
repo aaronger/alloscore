@@ -18,8 +18,10 @@ those arguments (e.g. \code{F}) are not passed directly}
 
 \item{alpha}{normalized loss when outcome y exceeds forecast x}
 
-\item{g}{list of functions that calculate the gpl function for each coordinate;
-default value of NULL causes pinball loss to be used}
+\item{g}{list of strings describing increment functions which will be used
+to form gpl functions for each coordinate; should be written using \code{x}, e.g. "log(x)";
+will be differentiated using \code{stats::D} so don't try anything fancy; defaults to NULL
+deferring to \code{dg}}
 }
 \value{
 see \code{alloscore}

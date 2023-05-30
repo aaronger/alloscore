@@ -14,10 +14,10 @@ alloscore(
   K,
   kappa = 1,
   alpha = 1,
+  g = NULL,
   dg = 1,
   eps_K = 0.01,
   eps_lam = 1e-05,
-  g = NULL,
   against_oracle = TRUE
 )
 }
@@ -40,17 +40,16 @@ coordinate}
 
 \item{alpha}{normalized loss when outcome y exceeds forecast x}
 
+\item{g}{list of strings describing increment functions which will be used
+to form gpl functions for each coordinate; should be written using \code{x}, e.g. "log(x)";
+will be differentiated using \code{stats::D} so don't try anything fancy; defaults to NULL
+deferring to \code{dg}}
+
 \item{dg}{numeric constant(s) or function(s) to calculate the derivative of the
-gpl function \code{g} for each coordinate}
+increment function \code{g} for each coordinate; defaults to 1 corresponding to pinball loss}
 
-\item{g}{list of functions that calculate the gpl function for each coordinate;
-default value of NULL causes pinball loss to be used}
-
-\item{against_oracle}{logical; if \code{TRUE}, scores are normalized relative to
-an oracle forecaster}
-
-\item{components}{logical; if TRUE, the components of the score (relative to the components
-of the oracle score if \code{against_oracle} is \code{TRUE}) are also returned}
+\item{against_oracle}{logical; if \code{TRUE}, components and scores relative to oracle are
+included}
 }
 \value{
 a date frame of the form returned by \code{allocate} with additional columns for

@@ -12,9 +12,10 @@ allocate(
   K,
   kappa = 1,
   alpha = 1,
+  g = NULL,
   dg = 1,
+  eps_lam = 1e-04,
   eps_K = 0.01,
-  eps_lam = 1e-05,
   point_mass_window = 0.001
 )
 }
@@ -35,8 +36,13 @@ coordinate}
 
 \item{alpha}{normalized loss when outcome y exceeds forecast x}
 
+\item{g}{list of strings describing increment functions which will be used
+to form gpl functions for each coordinate; should be written using \code{x}, e.g. "log(x)";
+will be differentiated using \code{stats::D} so don't try anything fancy; defaults to NULL
+deferring to \code{dg}}
+
 \item{dg}{numeric constant(s) or function(s) to calculate the derivative of the
-gpl function \code{g} for each coordinate}
+increment function \code{g} for each coordinate; defaults to 1 corresponding to pinball loss}
 
 \item{point_mass_window}{}
 }

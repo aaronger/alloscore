@@ -4,114 +4,22 @@
 #' @importFrom tibble tibble
 NULL
 
-#' Basic g-linear loss for under-prediction of an outcome y
-#'
-#' @param g a non-decreasing function
-#'
-#' @return function of prediction x and outcome y that only penalizes under-prediction
-#' @export
-#'
-#' @examples
-under_loss <- function(g = function(u) {u}) {
-  function(x,y) {pmax(g(y) - g(x), 0)}
-}
-
-#' Basic expected g-linear loss for under-prediction of a random outcome Y
-#'
-#' @param dg derivative of g, probably will work even with discontinuities
-#' @param F predictive cdf of an outcome Y
-#' @return function of prediction x giving expected g-linear loss for under-predicting Y~F
-#' @export
-#'
-#' @examples
-expected_under_loss <- function(dg = function(y) {1}, F) {
-  Vectorize(function(x) {
-    integrate(f = function(y) {(1-F(y))*dg(y)}, lower = x, upper = Inf, rel.tol = .001)$value
-    })
-}
-
-#' Basic g-linear loss for over-prediction of an outcome y
-#'
-#' @param g a non-decreasing function
-#'
-#' @return function of prediction x and outcome y that only penalizes over-prediction
-#' @export
-#'
-#' @examples
-over_loss <- function(g = function(u) {u}) {
-  function(x,y) {pmax(g(x) - g(y), 0)}
-}
-
-#' Basic expected g-linear loss for over-prediction of a random outcome Y
-#'
-#' @param dg derivative of g, probably will work even with discontinuities
-#' @param F predictive cdf of an outcome Y
-#' @return function of prediction x giving expected g-linear loss for over-predicting Y~F
-#' @export
-#'
-#' @examples
-expected_over_loss <- function(dg = function(y) {1}, F) {
-  Vectorize(function(x) {
-    integrate(f = function(y) {F(y)*dg(y)}, lower = Inf, upper = x, rel.tol = .001)$value
-    })
-}
-
-#' Create generalized piecewise linear (gpl) scoring/loss function,
-#' which in general need not be piecewise linear
-#'
-#' @param g gpl function
-#' @param kappa scale factor
-#' @param alpha normalized loss when outcome y exceeds forecast x
-#' @param U loss when outcome y exceeds forecast x; equals kappa*alpha
-#' @param O cost when forecast x exceeds outcome y; equals kappa*(1-alpha)
-#' @param const an added constant, defaults to 0 for which gpl loss function `L` will have `L(x,x) = 0`
-#' @return function with arguments `x` and `y` giving loss
-#' @export
-gpl_loss_fun <- function(g = function(u) {u},
-                         kappa = 1, alpha, O, U, const = 0) {
-  if (!xor(is_missing(U), is_missing(alpha))) {
-    stop("Either U or alpha must be specified, but not both")
-  }
-  if (!is_missing(U)) {
-    function(x, y) {O*over_loss(g)(x,y) + U*under_loss(g)(x,y) + const}
-  }
-  if (!is_missing(alpha)) {
-    function(x, y) {kappa*((1-alpha)*over_loss(g)(x,y) + alpha*under_loss(g)(x,y)) + const}
-  }
-}
-
-#' Create gpl expected loss function
-#'
-#' @param dg derivative of gpl function
-#' @param F predictive CDF
-#' @param kappa scale factor
-#' @param alpha normalized loss when outcome y exceeds forecast x
-#' @param U loss when outcome y exceeds forecast x; equals kappa*alpha
-#' @param O cost when forecast x exceeds outcome y; equals kappa*(1-alpha)
-#' @return function with argument x giving the expected loss with respect to the
-#'  distribution F
-#' @export
-gpl_loss_exp_fun <- function(dg = function(u) {1}, F,
-                              kappa = 1, alpha, O, U,
-                              const = 0) {
-  if (!xor(is_missing(U), is_missing(alpha))) {
-    stop("Either U or alpha must be specified, but not both")
-  }
-  if (!is_missing(U)) {
-    function(x) {O*expected_over_loss(dg,F)(x) + U*expected_under_loss(dg,F)(x)}
-  }
-  if (!is_missing(alpha)) {
-    function(x) {kappa*((1-alpha)*expected_over_loss(dg,F)(x) + alpha*expected_under_loss(dg,F)(x))}
-  }
-}
-
-#' Create function to calculate the marginal expected benefit of allocating an
+#'/ate function to calculate the marginal expected benefit of allocating an
 #' additional unit of resources to a given target.
 #'
+#' @param F cdf for forecast distribution
+#' @param kappa scale factor
+#' @param alpha normalized loss when outcome y exceeds forecast x
+#' @param w weight for given target
+#' @param g string describing increment function which will be used
+#'  to form gpl function for this target; should be written using `x`, e.g. "log(x)";
+#'  will be differentiated using `stats::D` so don't try anything fancy;
+#'  defaults to identity via default of 1 for dg.
+#' @param dg explicit numeric constant or function giving the derivative of `g` when `g`
+#'  is not specified. Defaults to 1 corresponding to pinball loss.
 #' @param q_scale scaling factor for resource level x; used for aligning marginal expected
 #'  benefit functions of different targets (and parameters) on single x interval.
 #' @param ... ignored
-#' @inheritParams allocate
 #'
 #' @return a function with argument x that calculates the marginal expected benefit
 #' @export
@@ -119,34 +27,14 @@ gpl_loss_exp_fun <- function(dg = function(u) {1}, F,
 #' Note that this is minus the derivative of the expected score \eqn{\overline{s}_F}
 #'
 #' @examples
-margexb_fun <- function(F, kappa = 1, alpha, w, dg = 1, q_scale = 1,...) {
+margexb_fun <- function(F, kappa = 1, alpha, w, g = NULL, dg = 1, q_scale = 1,...) {
+  if (!is.null(g)) {
+    dg <- get_derivative(g)
+  }
   if (!is_function(dg)) {
     return(function(x) {w^(-1)*kappa*dg*(alpha - F(x*q_scale))})
   }
   function(x) {w^(-1)*kappa*dg(x*q_scale)*(alpha - F(x*q_scale))}
-}
-
-find_linear_intervals <- function(Lambda, q, grid_size = 1000, tol = min(.001, 1/grid_size)) {
-  intervals <- list()
-  k <- 1
-  dtol <- tol*abs(Lambda(0)-Lambda(q))
-  x <- seq(from = 0, to = q, length.out = grid_size)
-  i <- 2
-  while (i < grid_size) {
-    if (abs(Lambda(x[i])-Lambda(x[i-1])) < dtol) {
-      left <- x[i-1] # start interval
-      i <- i+1 # give it at least length one
-      while ((abs(Lambda(x[i])-Lambda(left)) < dtol) & (i < grid_size)) {
-        i <- i+1 # keep adding if we don't leave dtol nbd
-      }
-      right <- x[i-1] # end interval at last point in dtol nbd
-      lam_val <- mean(c(Lambda(left), Lambda(right)))
-      intervals[[k]] <- c(left = left, right = right, lam_val = lam_val)
-      k <- k+1
-    }
-    i <- i+1
-  }
-  return(intervals)
 }
 
 #' Allocate to minimize expected gpl loss under forecasts F with constraint K
@@ -160,10 +48,14 @@ find_linear_intervals <- function(Lambda, q, grid_size = 1000, tol = min(.001, 1
 #' @param K vector of constraints on total provision
 #' @param kappa scale factor
 #' @param alpha normalized loss when outcome y exceeds forecast x
+#' @param g list of strings describing increment functions which will be used
+#'  to form gpl functions for each coordinate; should be written using `x`, e.g. "log(x)";
+#'  will be differentiated using `stats::D` so don't try anything fancy; defaults to NULL
+#'  deferring to `dg`
 #' @param dg numeric constant(s) or function(s) to calculate the derivative of the
-#'  gpl function `g` for each coordinate
-#' @param eps_K
+#'  increment function `g` for each coordinate; defaults to 1 corresponding to pinball loss
 #' @param eps_lam
+#' @param eps_K
 #' @param point_mass_window
 #'
 #' @return data frame with (list-)columns
@@ -179,14 +71,24 @@ find_linear_intervals <- function(Lambda, q, grid_size = 1000, tol = min(.001, 1
 #' @examples
 allocate <- function(df = NULL, F, Q, w = 1, K,
                      kappa = 1, alpha = 1,
+                     g = NULL,
                      dg = 1,
+                     eps_lam = 1e-4,
                      eps_K = .01,
-                     eps_lam = 1e-5,
                      point_mass_window = .001) {
   if (!is.null(df)) get_args_from_df(df)
+  if (!is.null(g)) {
+    dg <- map(g, get_derivative)
+  } else {
+    if (dg == 1) {
+      g <- function(x) x
+    } else {
+      g = "unspecified"
+    }
+  }
   # validation
   largs <- list(F = F, Q = Q, kappa = kappa, alpha = alpha, dg = dg, w = w)
-  N <-  max(map_int(largs, length))
+  N <- max(map_int(largs, length))
   for (i in 1:length(largs)) {
     l <- largs[[i]]
     # allow for repeated parameters (such as dg = 1) to be given by single term
@@ -299,13 +201,14 @@ allocate <- function(df = NULL, F, Q, w = 1, K,
       )
       Kdf[Kdf$lam == lam_tau,] <- Kdf_lam
     }
+    browser()
     out <- rbind(out, Kdf %>% dplyr::filter(converged))
     Kdf <- Kdf %>% dplyr::filter(!converged)
     tau <- tau + 1
   }
   # post-processing for plateaus, oracles in particular
-  out <- out %>% mutate(x = pmap(list(x, K, xs),
-    function(x, K, xs) {
+  out <- out %>% mutate(x = pmap(list(x, K, xs, lamU),
+    function(x, K, xs, lamU) {
       if ((abs((sum(w*x) - K)/K) > eps_K)) {
         if (lamU <= eps_lam) {
           if (sum(w*x) > K) {
@@ -337,7 +240,11 @@ allocate <- function(df = NULL, F, Q, w = 1, K,
       }
       return(x)
     }))
-  out <- structure(out, w = w, kappa = kappa, alpha = alpha, dg = dg)
+  out <- structure(
+    out,
+    class = c("allocated", class(out)),
+    w = w, kappa = kappa, alpha = alpha, g = g, dg = dg,
+    gpl = gpl_loss_fun(g = g, kappa = kappa, alpha = alpha))
   return(out)
 }
 
@@ -384,18 +291,26 @@ oracle_alloscore <- function(df = NULL, y, K,
   )
 }
 
+alloscore <- function(df, ...) {
+  UseMethod("alloscore")
+}
+
+alloscore.allocated <- function(df, ...) {
+  # extract gpl from df attributes
+  df <- df %>% mutate(
+    components = map(x, function(x) gpl(x,y)),
+    score = map_dbl(components, sum)
+  )
+}
+
 #' Obtain the allocation score for a given forecast distribution F for the
 #' observed data value y in a constrained allocation problem.
 #'
 #' @param df data frame containing columns for other list arguments which are used only when
 #'  those arguments (e.g. `F`) are not passed directly
 #' @param y numeric observed data value
-#' @param g list of functions that calculate the gpl function for each coordinate;
-#'  default value of NULL causes pinball loss to be used
-#' @param against_oracle logical; if `TRUE`, scores are normalized relative to
-#'  an oracle forecaster
-#' @param components logical; if TRUE, the components of the score (relative to the components
-#' of the oracle score if `against_oracle` is `TRUE`) are also returned
+#' @param against_oracle logical; if `TRUE`, components and scores relative to oracle are
+#'  included
 #' @inheritParams allocate
 #'
 #' @return a date frame of the form returned by `allocate` with additional columns for
@@ -410,10 +325,10 @@ oracle_alloscore <- function(df = NULL, y, K,
 #' @export
 alloscore <- function(df = NULL, y, F, Q, w = 1, K,
                       kappa = 1, alpha = 1,
+                      g = NULL,
                       dg = 1,
                       eps_K = .01,
                       eps_lam = 1e-5,
-                      g = NULL,
                       against_oracle = TRUE) {
   if (!is.null(df)) get_args_from_df(df)
   if (dg == 1) {
@@ -465,4 +380,28 @@ alloscore <- function(df = NULL, y, F, Q, w = 1, K,
       )
   }
   return(adf)
+}
+
+# Alternative approach to dealing with plateaus in allocate; not currently in use
+find_linear_intervals <- function(Lambda, q, grid_size = 1000, tol = min(.001, 1/grid_size)) {
+  intervals <- list()
+  k <- 1
+  dtol <- tol*abs(Lambda(0)-Lambda(q))
+  x <- seq(from = 0, to = q, length.out = grid_size)
+  i <- 2
+  while (i < grid_size) {
+    if (abs(Lambda(x[i])-Lambda(x[i-1])) < dtol) {
+      left <- x[i-1] # start interval
+      i <- i+1 # give it at least length one
+      while ((abs(Lambda(x[i])-Lambda(left)) < dtol) & (i < grid_size)) {
+        i <- i+1 # keep adding if we don't leave dtol nbd
+      }
+      right <- x[i-1] # end interval at last point in dtol nbd
+      lam_val <- mean(c(Lambda(left), Lambda(right)))
+      intervals[[k]] <- c(left = left, right = right, lam_val = lam_val)
+      k <- k+1
+    }
+    i <- i+1
+  }
+  return(intervals)
 }

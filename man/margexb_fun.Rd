@@ -2,23 +2,27 @@
 % Please edit documentation in R/allocation.R
 \name{margexb_fun}
 \alias{margexb_fun}
-\title{Create function to calculate the marginal expected benefit of allocating an
+\title{/ate function to calculate the marginal expected benefit of allocating an
 additional unit of resources to a given target.}
 \usage{
-margexb_fun(F, kappa = 1, alpha, w, dg = 1, q_scale = 1, ...)
+margexb_fun(F, kappa = 1, alpha, w, g = NULL, dg = 1, q_scale = 1, ...)
 }
 \arguments{
-\item{F}{list of cdf functions for forecast distributions}
+\item{F}{cdf for forecast distribution}
 
 \item{kappa}{scale factor}
 
 \item{alpha}{normalized loss when outcome y exceeds forecast x}
 
-\item{w}{numeric vector with cost per unit resource allocated to each
-coordinate}
+\item{w}{weight for given target}
 
-\item{dg}{numeric constant(s) or function(s) to calculate the derivative of the
-gpl function \code{g} for each coordinate}
+\item{g}{string describing increment function which will be used
+to form gpl function for this target; should be written using \code{x}, e.g. "log(x)";
+will be differentiated using \code{stats::D} so don't try anything fancy;
+defaults to identity via default of 1 for dg.}
+
+\item{dg}{explicit numeric constant or function giving the derivative of \code{g} when \code{g}
+is not specified. Defaults to 1 corresponding to pinball loss.}
 
 \item{q_scale}{scaling factor for resource level x; used for aligning marginal expected
 benefit functions of different targets (and parameters) on single x interval.}
@@ -29,7 +33,7 @@ benefit functions of different targets (and parameters) on single x interval.}
 a function with argument x that calculates the marginal expected benefit
 }
 \description{
-Create function to calculate the marginal expected benefit of allocating an
+/ate function to calculate the marginal expected benefit of allocating an
 additional unit of resources to a given target.
 }
 \details{
