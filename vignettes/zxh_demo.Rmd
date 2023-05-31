@@ -22,7 +22,7 @@ library(alloscore)
 ```
 
 ```{r}
-(zxh_norm_ex <- zxh_tab2 %>% 
+zxh_norm_ex <- zxh_tab2 %>% 
    rename(mean = mu, sd = sigma) %>% 
    add_pdqr_funs(dist = "norm") %>% 
    mutate(
@@ -30,21 +30,10 @@ library(alloscore)
      .after = c) %>% 
    mutate(
      q = map2_dbl(Q, alpha, exec), 
-     .after = q_zxh) %>% 
-   mutate(
-     allo = allocate(
-        F = F,
-        Q = Q,
-        kappa = kappa,
-        alpha = alpha,
-        w = c,
-        dg = 1,
-        K = 2500,
-        eps_K = .00001,
-        eps_lam = .00001
-      ), 
-     .after = Opt
-   ))
+     .after = q_zxh)
+
+allo <- allocate(zxh_norm_ex, w = "c", K = 2500, target_names = "Product")
+cbind(zxh_tab2, "allos" = allo$x[[1]])
 ```
 
 ```{r}

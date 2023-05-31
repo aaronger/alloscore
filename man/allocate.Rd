@@ -6,10 +6,10 @@
 \usage{
 allocate(
   df = NULL,
+  K,
   F,
   Q,
   w = 1,
-  K,
   kappa = 1,
   alpha = 1,
   g = "x",
@@ -20,8 +20,11 @@ allocate(
 )
 }
 \arguments{
-\item{df}{data frame containing columns for other list arguments which are used only when
-those arguments (e.g. \code{F}) are not passed directly}
+\item{df}{data frame containing columns for other list arguments which are used when
+those arguments (e.g. \code{F}) are left empty or give the name of a column of df,
+e.g., \code{F = "cdf"}}
+
+\item{K}{vector of constraints on total provision (cannot be supplied via df)}
 
 \item{F}{list of cdf functions for forecast distributions}
 
@@ -29,8 +32,6 @@ those arguments (e.g. \code{F}) are not passed directly}
 
 \item{w}{numeric vector with cost per unit resource allocated to each
 coordinate}
-
-\item{K}{vector of constraints on total provision}
 
 \item{kappa}{scale factor}
 

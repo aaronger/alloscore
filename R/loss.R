@@ -199,17 +199,16 @@ dexp_gpl_loss <- function(g = "x", dg = NULL, F, kappa = 1, alpha = NA, O, U = N
 #' @export
 #'
 #' @examples
-new_gpl_df <- function(N = NULL, g = "x", kappa = 1, alpha = 1, O = NA, U = NA, offset = 0) {
-  args <- list(g = g, kappa = kappa, alpha = alpha, O = O, U = U, offset = offset)
+new_gpl_df <- function(N = NULL, target_names = NA,
+                       g = "x", kappa = 1, alpha = 1, O = NA, U = NA, offset = 0) {
+  args <- list(g = g, target_names = target_names,
+               kappa = kappa, alpha = alpha, O = O, U = U, offset = offset)
   names <- names(args)
   if (is.null(N)) {
     N <- max(map_int(largs, length))
   }
-
   for (i in seq_along(args)) {
-    arg <- args[[i]]
-    len <- length(arg)
-    if (!len %in% c(1, N)) {
+    if (!length(args[[i]]) %in% c(1, N)) {
       stop(paste(names[i], "must be of length 1 or", N))
     }
   }

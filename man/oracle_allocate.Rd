@@ -7,10 +7,11 @@
 oracle_allocate(df = NULL, y, K, ...)
 }
 \arguments{
-\item{df}{data frame containing columns for other list arguments which are used only when
-those arguments (e.g. \code{F}) are not passed directly}
+\item{df}{data frame containing columns for other list arguments which are used when
+those arguments (e.g. \code{F}) are left empty or give the name of a column of df,
+e.g., \code{F = "cdf"}}
 
-\item{K}{vector of constraints on total provision}
+\item{K}{vector of constraints on total provision (cannot be supplied via df)}
 }
 \value{
 see \code{allocate}

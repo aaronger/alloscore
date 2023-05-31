@@ -11,7 +11,7 @@ oracle_alloscore(df = NULL, y, K, kappa = 1, alpha = 1, g = function(u) u, ...)
 
 \item{y}{numeric observed data value}
 
-\item{K}{vector of constraints on total provision}
+\item{K}{vector of constraints on total provision (cannot be supplied via df)}
 
 \item{kappa}{scale factor}
 

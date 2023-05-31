@@ -6,13 +6,16 @@ NULL
 
 #' Allocate to minimize expected gpl loss under forecasts F with constraint K
 #'
-#' @param df data frame containing columns for other list arguments which are used only when
-#'  those arguments (e.g. `F`) are not passed directly
+#' @param df data frame containing columns for other list arguments which are used when
+#'  those arguments (e.g. `F`) are left empty or give the name of a column of df,
+#'  e.g., `F = "cdf"`
+#' @param K vector of constraints on total provision (cannot be supplied via df)
+#' @target_names vector of names for allocation targets; will default to indices corresponding to
+#'  other vector arguments
 #' @param F list of cdf functions for forecast distributions
 #' @param Q list of quantile functions for forecast distributions
 #' @param w numeric vector with cost per unit resource allocated to each
 #'  coordinate
-#' @param K vector of constraints on total provision
 #' @param kappa scale factor
 #' @param alpha normalized loss when outcome y exceeds forecast x
 #' @param g list of strings describing increment functions which will be used
@@ -36,20 +39,29 @@ NULL
 #' @export
 #'
 #' @examples
-allocate <- function(df = NULL, F, Q, w = 1, K,
+allocate <- function(df = NULL, K,
+                     target_names = NA,
+                     F, Q, w = 1,
                      kappa = 1, alpha = 1,
-                     g = "x",
-                     dg = NA,
+                     g = "x", dg = NA,
                      eps_lam = 1e-4,
                      eps_K = .01,
                      point_mass_window = .001) {
+  if (is.character(target_names) && (length(target_names) == 1)) {
+    target_col_name <- target_names
+  } else {
+    target_col_name <- NULL
+  }
   if (!is.null(df)) {
     get_args_from_df(df)
     N <- nrow(df)
   } else {
     N <- length(F)
   }
-  gpl <- new_gpl_df(N = N, g = g, kappa = kappa, alpha = alpha)
+  gpl <- new_gpl_df(N = N, target_names = target_names, g = g, kappa = kappa, alpha = alpha)
+  if (!is.null(target_col_name)) {
+    gpl <- gpl %>% rename(!!target_col_name := target_names)
+  }
 
   # initialize allocation at q_i if alpha_i < 1 or something big enough to
   # violate constraint if not
