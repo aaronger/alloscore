@@ -4,7 +4,7 @@
 \alias{dexp_gpl_loss}
 \title{Create derivative of expected gpl loss}
 \usage{
-dexp_gpl_loss(g = "x", dg = NULL, F, kappa = 1, alpha, O, U)
+dexp_gpl_loss(g = "x", dg = NULL, F, kappa = 1, alpha = NA, O, U = NA)
 }
 \arguments{
 \item{U}{}

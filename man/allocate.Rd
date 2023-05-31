@@ -12,8 +12,8 @@ allocate(
   K,
   kappa = 1,
   alpha = 1,
-  g = NULL,
-  dg = 1,
+  g = "x",
+  dg = NA,
   eps_lam = 1e-04,
   eps_K = 0.01,
   point_mass_window = 0.001

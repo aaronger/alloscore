@@ -161,7 +161,7 @@ get_function <- function(func) {
   if (func == "exp(x)") {
     return(function(x) exp(x))
   }
-  func_expr <- parse(text = func_str)
+  func_expr <- parse(text = func)
   return(function(x) eval(func_expr))
 }
 

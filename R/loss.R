@@ -37,7 +37,7 @@ exp_under_loss <- function(dg = function(y) {1}, F) {
 #' @examples
 dexp_under_loss <- function(g = "x", dg = NULL, F) {
   if (is.null(dg)) {dg <- get_derivative(g)}
-  function(x) {dg(x) * F(x)}
+  function(x) {dg(x) * (F(x) - 1)}
 }
 
 #' Basic g-linear loss for over-prediction of an outcome y
@@ -78,7 +78,7 @@ exp_over_loss <- function(dg = function(y) {1}, F) {
 #' @examples
 dexp_over_loss <- function(g = "x", dg = NULL, F) {
   if (is.null(dg)) {dg <- get_derivative(g)}
-  function(x) {-dg(x) * (1 - F(x))}
+  function(x) {dg(x) * F(x)}
 }
 
 #' Create generalized piecewise linear (gpl) scoring/loss function,
@@ -124,15 +124,15 @@ gpl_loss_fun <- function(g = "x", kappa = 1, alpha, O, U = NA, offset = 0) {
 #'  distribution F
 #' @export
 exp_gpl_loss_fun <- function(dg = function(u) {1}, F,
-                             kappa = 1, alpha, O, U,
+                             kappa = 1, alpha, O, U = NA,
                              const = 0) {
-  if (!xor(is_missing(U), is_missing(alpha))) {
+  if (!xor(is.na(U), is.na(alpha))) {
     stop("Either U or alpha must be specified, but not both")
   }
-  if (!is_missing(U)) {
+  if (!is.na(U)) {
     function(x) {O*exp_over_loss(dg,F)(x) + U*exp_under_loss(dg,F)(x)}
   }
-  if (!is_missing(alpha)) {
+  if (!is.na(alpha)) {
     function(x) {kappa*((1-alpha)*exp_over_loss(dg,F)(x) + alpha*exp_under_loss(dg,F)(x))}
   }
 }
@@ -151,20 +151,36 @@ exp_gpl_loss_fun <- function(dg = function(u) {1}, F,
 #' @export
 #'
 #' @examples
-dexp_gpl_loss <- function(g = "x", dg = NULL, F, kappa = 1, alpha, O, U) {
+dexp_gpl_loss <- function(g = "x", dg = NULL, F, kappa = 1, alpha = NA, O, U = NA) {
+  if (is_missing(F)) {
+    stop("cdf F is missing")
+  }
   if (is.null(dg)) {dg <- get_derivative(g)}
-  if (!xor(is_missing(U), is_missing(alpha))) {
+  if (!xor(is.na(U), is.na(alpha))) {
     stop("Either U or alpha must be specified, but not both")
   }
-  if (!is_missing(U)) {
-    function(x) {
-      O * dexp_over_loss(dg = dg, F = F)(x) +
-      U * dexp_under_loss(dg = dg, F = F)(x)}
+  if (!is.na(U)) {
+    if (O == 0) { # avoid 0*1/0 problems with g = log(x)
+      function(x) {
+        U * dexp_under_loss(dg = dg, F = F)(x)
+      }
+    } else {
+      function(x) {
+        O * dexp_over_loss(dg = dg, F = F)(x) +
+        U * dexp_under_loss(dg = dg, F = F)(x)
+      }
     }
-  if (!is_missing(alpha)) {
-    function(x) {
-      kappa * ((1-alpha) * dexp_over_loss(dg = dg, F = F)(x) +
-      alpha * dexp_under_loss(dg = dg, F = F)(x))
+  }
+  if (!is.na(alpha)) {
+    if (alpha == 1) { # avoid 0*1/0 problems with g = log(x)
+      function(x) {
+        kappa * (alpha * dexp_under_loss(dg = dg, F = F)(x))
+      }
+    } else {
+      function(x) {
+        kappa * ((1 - alpha) * dexp_over_loss(dg = dg, F = F)(x) +
+                   alpha * dexp_under_loss(dg = dg, F = F)(x))
+      }
     }
   }
 }
@@ -220,6 +236,42 @@ new_gpl_df <- function(N = NULL, g = "x", kappa = 1, alpha = 1, O = NA, U = NA, 
   return(structure(gpl, class = c("gpl_df", class(gpl))))
 }
 
+#' Create a list of derivatives of expected gpl losses from a gpl_df
+#'
+#' @param df
+#' @param F list of predictive cdfs
+#'
+#' @return
+#' @export
+#'
+#' @examples
+dexp_gpl_df <- function(df, F) {
+  stopifnot("gpl_df" %in% class(df))
+  if (nrow(df) != length(F)) {
+    stop("Need same number of targets and distributions")
+  }
+  df %>% select(any_of(names(formals(dexp_gpl_loss)))) %>%
+    mutate(F = F) %>% pmap(dexp_gpl_loss)
+}
+
+#' Create marginal expected benefit functions for vector of gpl losses with respect
+#' to predictive distributions F and weights w
+#'
+#' @param w weights for optimizing allocation
+#' @inheritParams dexp_gpl_df
+#'
+#' @return
+#' @export
+#'
+#' @examples
+meb_gpl_df <- function(df, F, w) {
+  stopifnot("gpl_df" %in% class(df))
+  stopifnot(is.numeric(w))
+  if (!(length(w) %in% c(1, nrow(df)))) {
+    stop("Need same number of targets and weights")
+  }
+  df %>% mutate(kappa = -(1/w)*kappa) %>% dexp_gpl_df(F = F)
+}
 
 
 

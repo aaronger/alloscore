@@ -12,7 +12,7 @@ exp_gpl_loss_fun(
   kappa = 1,
   alpha,
   O,
-  U,
+  U = NA,
   const = 0
 )
 }

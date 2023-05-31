@@ -7,8 +7,7 @@
 oracle_alloscore(df = NULL, y, K, kappa = 1, alpha = 1, g = function(u) u, ...)
 }
 \arguments{
-\item{df}{data frame containing columns for other list arguments which are used only when
-those arguments (e.g. \code{F}) are not passed directly}
+\item{df}{an allocated data frame}
 
 \item{y}{numeric observed data value}
 

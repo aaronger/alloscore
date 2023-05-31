@@ -2,10 +2,13 @@
 % Please edit documentation in R/allocation.R
 \name{alloscore}
 \alias{alloscore}
-\title{Obtain the allocation score for a given forecast distribution F for the
-observed data value y in a constrained allocation problem.}
+\alias{alloscore.default}
+\alias{alloscore.allocated}
+\title{Score the allocations from set of forecasts against realized outcomes \code{y}.}
 \usage{
-alloscore(
+alloscore(df = NULL, ...)
+
+\method{alloscore}{default}(
   df = NULL,
   y,
   F,
@@ -14,16 +17,17 @@ alloscore(
   K,
   kappa = 1,
   alpha = 1,
-  g = NULL,
-  dg = 1,
+  g = "x",
+  dg = NA,
   eps_K = 0.01,
   eps_lam = 1e-05,
   against_oracle = TRUE
 )
+
+\method{alloscore}{allocated}(df, y, against_oracle = TRUE)
 }
 \arguments{
-\item{df}{data frame containing columns for other list arguments which are used only when
-those arguments (e.g. \code{F}) are not passed directly}
+\item{df}{an allocated data frame}
 
 \item{y}{numeric observed data value}
 
@@ -63,6 +67,10 @@ a date frame of the form returned by \code{allocate} with additional columns for
 }
 }
 \description{
-Obtain the allocation score for a given forecast distribution F for the
-observed data value y in a constrained allocation problem.
+Score the allocations from set of forecasts against realized outcomes \code{y}.
+
+Default method for alloscore, used when parameters passed individually; works by
+allocating and then forwarding to allocated method.
+
+Allocation scoring method for forecasts with computed allocations and gpl loss functions.
 }
