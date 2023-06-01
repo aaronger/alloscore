@@ -4,7 +4,16 @@
 \alias{new_gpl_df}
 \title{Create data frame of gpl functions and associated parameters}
 \usage{
-new_gpl_df(N = NULL, g = "x", kappa = 1, alpha = 1, O = NA, U = NA, offset = 0)
+new_gpl_df(
+  N = NULL,
+  target_names = NA,
+  g = "x",
+  kappa = 1,
+  alpha = 1,
+  O = NA,
+  U = NA,
+  offset = 0
+)
 }
 \arguments{
 \item{offset}{}

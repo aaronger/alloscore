@@ -61,6 +61,8 @@ allocate <- function(df = NULL, K,
   gpl <- new_gpl_df(N = N, target_names = target_names, g = g, kappa = kappa, alpha = alpha)
   if (!is.null(target_col_name)) {
     gpl <- gpl %>% rename(!!target_col_name := target_names)
+  } else {
+    target_col_name <- "target_names"
   }
 
   # initialize allocation at q_i if alpha_i < 1 or something big enough to
@@ -119,29 +121,38 @@ allocate <- function(df = NULL, K,
       x_tau <- Kdf_lam$x[[1]] # this is the whole point of using Kdf
       stopifnot(length(lam_prev <- unique(Kdf_lam$lam_prev)) == 1) # sanity check
       for (i in 1:N) {
-        if (lam_tau > Lambda0[i]) {
-          # then lam gives a negative quantile on i so we allocate nothing at this iteration
-          x_tau[i] <- 0
-        } else {
-          # we should expect a critical pt greater than x_tau[i] = 0 and write the ith
-          # component of the gradient equation
-          lam_grad = function(xi) {
-            Lambda[[i]](xi) - lam_tau
-          }
-          # obtain a search interval in which to look for a root of lam_grad
-          if (lam_tau < lam_prev) {
-            # if lam has decreased we need to look closer to the quantile
-            I <- c(x_tau[i] * (1 - point_mass_window), qs[i])
+        tryCatch({
+          if (lam_tau > Lambda0[i]) {
+            # then lam gives a negative quantile on i so we allocate nothing at this iteration
+            x_tau[i] <- 0
           } else {
-            # and if not we need to look further toward 0
-            I <- c(0, x_tau[i] * (1 + point_mass_window))
+            # we should expect a critical pt greater than x_tau[i] = 0 and write the ith
+            # component of the gradient equation
+            lam_grad = function(xi) {
+              Lambda[[i]](xi) - lam_tau
+            }
+            # obtain a search interval in which to look for a root of lam_grad
+            if (lam_tau < lam_prev) {
+              # if lam has decreased we need to look closer to the quantile
+              I <- c(x_tau[i] * (1 - point_mass_window), qs[i])
+            } else {
+              # and if not we need to look further toward 0
+              I <- c(0, x_tau[i] * (1 + point_mass_window))
+            }
+            if (lam_grad(I[1]) * lam_grad(I[2]) < 0) {
+              # then adjust x_tau[i] to that root.
+              x_tau[i] <- uniroot(f = lam_grad, interval = I)$root
+            }
+            # Otherwise leave x_tau[i] unchanged which will cause lam to increase on next step
           }
-          if (lam_grad(I[1]) * lam_grad(I[2]) < 0) {
-            # then adjust x_tau[i] to that root.
-            x_tau[i] <- uniroot(f = lam_grad, interval = I)$root
-          }
-          # Otherwise leave x_tau[i] unchanged which will cause lam to increase on next step
-        }
+        }, error = function(e) {
+          message(paste(
+            "Error at index =", i,
+            ", target =", target_names[i],
+            ", tau =", tau,
+            ": ", e$message))
+          return(NULL)
+        })
       }
       Kdf_lam <- Kdf_lam %>% mutate(
         x = list(x_tau),

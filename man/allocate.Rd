@@ -7,6 +7,7 @@
 allocate(
   df = NULL,
   K,
+  target_names = NA,
   F,
   Q,
   w = 1,
