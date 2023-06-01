@@ -53,8 +53,12 @@ data frame with (list-)columns
 \describe{
 \item{K}{constraints}
 \item{x}{allocations for constraints}
-\item{xs}{array with allocations at each iteration as rows}
-\item{lam_seq}{sequence of Lagrange multipliers tested at each iteration}
+\item{xs}{data frames with allocations at each iteration as columns}
+\item{lam_seq}{sequences of Lagrange multipliers tested at each iteration}
+\item{qs_OK}{}
+\item{post-processed}{whether post-processing was used at this K to deal with
+plateaus in the objective function; TRUE in particular whenever oracle allocation is
+performed for an active K.}
 }
 }
 \description{

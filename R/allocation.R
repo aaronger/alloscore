@@ -32,8 +32,12 @@ NULL
 #' \describe{
 #'   \item{K}{constraints}
 #'   \item{x}{allocations for constraints}
-#'   \item{xs}{array with allocations at each iteration as rows}
-#'   \item{lam_seq}{sequence of Lagrange multipliers tested at each iteration}
+#'   \item{xs}{data frames with allocations at each iteration as columns}
+#'   \item{lam_seq}{sequences of Lagrange multipliers tested at each iteration}
+#'   \item{qs_OK}{}
+#'   \item{post-processed}{whether post-processing was used at this K to deal with
+#'    plateaus in the objective function; TRUE in particular whenever oracle allocation is
+#'    performed for an active K.}
 #' }
 
 #' @export
@@ -80,8 +84,8 @@ allocate <- function(df = NULL, K,
   # as well as columns for the current lambda and previous lambda iterates
   Kdf <- tibble(
     K = K,
-    xs = list(qs), # for iterations
-    x = xs, # for final allocation
+    xs = list(gpl %>% select(target_col_name) %>% mutate(`qs` = qs)), # for iterations
+    x = list(tibble::deframe(xs[[1]])), # for final allocation
     qs_OK = map(x, ~sum(w*.)) < K,
     converged = FALSE,
     lamL = 0,
@@ -156,7 +160,7 @@ allocate <- function(df = NULL, K,
       }
       Kdf_lam <- Kdf_lam %>% mutate(
         x = list(x_tau),
-        xs = map(xs, ~rbind(., x_tau)),
+        xs = map(xs, ~mutate(., !!as.character(tau) := x_tau)),
         lam_prev = lam_tau,
         # check whether we have under- or over-shot K and narrow search interval accordingly
         lamL = ifelse(sum(w*x_tau) > K, lam_tau, lamL),
@@ -177,39 +181,50 @@ allocate <- function(df = NULL, K,
     tau <- tau + 1
   }
   # post-processing for plateaus, oracles in particular
-  out <- out %>% mutate(x = pmap(list(x, K, xs, lamU, qs_OK),
-    function(x, K, xs, lamU, qs_OK) {
-      if ((abs((sum(w*x) - K)/K) > eps_K) & !qs_OK) {
-        if (lamU <= eps_lam) {
-          if (sum(w*x) > K) {
-            stop("strange situation")
-          }
-          Delta <- function(t) {
-            sum(w*t*x) - K
-          }
-          t_star <- uniroot(f = Delta, interval = c(1,2), extendInt = "upX")$root
-          x <- t_star*x
-        } else {
-          x_L <- x_U <- x
-          iter_num <- dim(xs)[1]
-          for (j in 1:iter_num) {
-            if (j == iter_num + 1) {
-              stop("Something went very wrong")
-            }
-            x_L <- pmin(x_L, xs[iter_num - j,])
-            x_U <- pmax(x_U, xs[iter_num - j,])
-            Delta <- function(t) {
-              sum(w * ((1 - t) * x_L + t * x_U)) - K
-            }
-            if ((Delta(0) < 0) & (Delta(1) > 0))
-              break
-          }
-          t_star <- uniroot(f = Delta, interval = c(0, 1))$root
-          x <- (1-t_star)*x_L + t_star*x_U
-        }
-      }
+  out <- out %>% mutate(
+    post_processed = pmap_lgl(list(x, K, qs_OK),
+                          function(x, K, qs_OK) {
+                            (abs((sum(w * x) - K) / K) > eps_K) && !qs_OK
+                          }))
+  out <- out %>% mutate(
+    x = pmap(list(post_processed, x, K, xs, lamU, qs_OK),
+             function(post_processed, x, K, xs, lamU, qs_OK) {
+               if (post_processed) {
+                 if (lamU <= eps_lam) {
+                   if (sum(w * x) > K) {
+                     stop("strange situation")
+                   }
+                   Delta <- function(t) {
+                     sum(w * t * x) - K
+                   }
+                   t_star <-
+                     uniroot(f = Delta,
+                             interval = c(1, 2),
+                             extendInt = "upX")$root
+                   x <- t_star * x
+                 } else {
+                   x_L <- x_U <- x
+                   iter_num <- ncol(xs) - 2
+                   for (j in 1:iter_num) {
+                     if (j == iter_num + 1) {
+                       stop("Something went very wrong")
+                     }
+                     browser()
+                     x_L <- pmin(x_L, xs[[iter_num - j + 2]])
+                     x_U <- pmax(x_U, xs[[iter_num - j + 2]])
+                     Delta <- function(t) {
+                       sum(w * ((1 - t) * x_L + t * x_U)) - K
+                     }
+                     if ((Delta(0) < 0) & (Delta(1) > 0))
+                       break
+                   }
+                   t_star <- uniroot(f = Delta, interval = c(0, 1))$root
+                   x <- (1 - t_star) * x_L + t_star * x_U
+                 }
+               }
       return(x)
-    })) %>% arrange(K)
+    }))
+  out <- out %>% select(-c(converged, lam_prev)) %>% arrange(K)
   return(structure(out, class = c("allocated", class(out)), gpl_df = gpl, w = w))
 }
 
