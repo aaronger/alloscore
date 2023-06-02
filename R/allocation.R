@@ -209,7 +209,6 @@ allocate <- function(df = NULL, K,
                      if (j == iter_num + 1) {
                        stop("Something went very wrong")
                      }
-                     browser()
                      x_L <- pmin(x_L, xs[[iter_num - j + 2]])
                      x_U <- pmax(x_U, xs[[iter_num - j + 2]])
                      Delta <- function(t) {
@@ -224,7 +223,8 @@ allocate <- function(df = NULL, K,
                }
       return(x)
     }))
-  out <- out %>% select(-c(converged, lam_prev)) %>% arrange(K)
+  out <- out %>% select(-c(converged, lam_prev)) %>% arrange(K) %>%
+    mutate(xdf = map(x, ~tibble::enframe(., name = target_col_name, value = "allocations")))
   return(structure(out, class = c("allocated", class(out)), gpl_df = gpl, w = w))
 }
 
@@ -265,8 +265,10 @@ alloscore.default <- function(df = NULL, y, F, Q, w = 1, K,
                       eps_lam = 1e-5,
                       against_oracle = TRUE) {
   # allocate will handle validation and attribute assignments
+  if (!is.null(df)) {
+    get_args_from_df(df)
+  }
   allocate(
-    df = df,
     F = F,
     Q = Q,
     w = w,
@@ -304,10 +306,9 @@ alloscore.allocated <- function(df, y, against_oracle = TRUE) {
 
   if (against_oracle) {
     oracle_scores <- attr(df, "gpl_df") %>%
-      select(g, kappa, alpha, O, U) %>%
-      mutate(U = alpha * kappa,
-             O = 0,
-             alpha = NA) %>%
+      select(g, kappa, alpha) %>%
+      mutate(kappa = alpha,
+             alpha = 1) %>%
       oracle_allocate(y = y,
                       w = attr(df, "w"),
                       K = df$K) %>%

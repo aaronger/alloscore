@@ -13,7 +13,7 @@ exp_gpl_loss_fun(
   alpha,
   O,
   U = NA,
-  const = 0
+  offset = 0
 )
 }
 \arguments{

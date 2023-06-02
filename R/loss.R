@@ -125,7 +125,7 @@ gpl_loss_fun <- function(g = "x", kappa = 1, alpha, O, U = NA, offset = 0) {
 #' @export
 exp_gpl_loss_fun <- function(dg = function(u) {1}, F,
                              kappa = 1, alpha, O, U = NA,
-                             const = 0) {
+                             offset = 0) {
   if (!xor(is.na(U), is.na(alpha))) {
     stop("Either U or alpha must be specified, but not both")
   }

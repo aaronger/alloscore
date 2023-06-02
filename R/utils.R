@@ -138,8 +138,8 @@ stdize_met_params <- function(C, L) {
 #' Utility function to make data frames of forecasts easier to work with;
 #' works via side-effects of `assign`
 get_args_from_df <- function(df) {
-  e <- caller_env()
-  all_args <- formals(caller_fn())
+  e <- rlang::caller_env()
+  all_args <- formals(rlang::caller_fn())
   all_arg_names <- names(all_args)
   # overwrite the defaults of arguments if they are supplied by df
   args_with_defaults <- purrr::discard(all_args, is_missing)
