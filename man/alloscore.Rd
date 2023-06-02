@@ -21,7 +21,7 @@ alloscore(df = NULL, ...)
   g = "x",
   dg = NA,
   eps_K = 0.01,
-  eps_lam = 1e-05,
+  eps_lam = 1e-04,
   against_oracle = TRUE
 )
 

@@ -1,5 +1,5 @@
-#' @importFrom purrr map map2 pmap map_dbl map2_dbl map_int partial map_lgl
-#' @importFrom rlang exec is_missing is_list caller_env
+#' @importFrom purrr map map2 pmap map_dbl map2_dbl pmap_dbl map_int partial map_lgl pmap_lgl
+#' @importFrom rlang exec is_missing is_list is_function caller_env
 #' @importFrom dplyr mutate arrange
 #' @importFrom tibble tibble
 NULL
@@ -269,7 +269,7 @@ alloscore.default <- function(df = NULL, K, target_names = NA,
                               g = "x",
                               dg = NA,
                               eps_K = .01,
-                              eps_lam = 1e-5,
+                              eps_lam = 1e-4,
                               against_oracle = TRUE) {
 
   # allocate will handle validation and attribute assignments
@@ -374,7 +374,8 @@ oracle_allocate <- function(df = NULL, y, K, ...) {
 #' @examples
 oracle_alloscore <- function(df = NULL, y, K,
                              kappa = 1, alpha = 1,
-                             g = function(u) u, ...) {
+                             g = "x", ...) {
+  stop("Not implemented yet")
   gpl <- gpl_loss_fun(g, kappa, alpha)
   oracle_allocate(
     df = df,

@@ -4,7 +4,7 @@
 \alias{oracle_alloscore}
 \title{Score according to an oracle's knowledge of outcome y}
 \usage{
-oracle_alloscore(df = NULL, y, K, kappa = 1, alpha = 1, g = function(u) u, ...)
+oracle_alloscore(df = NULL, y, K, kappa = 1, alpha = 1, g = "x", ...)
 }
 \arguments{
 \item{df}{an allocated data frame}

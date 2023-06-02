@@ -10,7 +10,10 @@ vignette: >
 ```{r, include = FALSE}
 knitr::opts_chunk$set(
   collapse = TRUE,
-  comment = "#>"
+  comment = "#>",
+  fig.width = 8,
+  fig.height = 8,
+  out.width = "100%"
 )
 ```
 
@@ -23,69 +26,105 @@ library(tibble)
 
 This vignette runs through some of the new functionality added in this version of `alloscore`.
 
-We start with an exponential data generating process across $N$ targets and use the convenience function `add_pdqr_funs` to construct a log-normal forecaster that tries to match the exponential mean. Only cdfs ("p") and quantile functions ("q") need to be added for `alloscore` to operate but I'll add densities too for plotting.
+We start with an exponential data generating process across $N = 10$ targets and use the convenience function `add_pdqr_funs` to construct a log-normal forecaster that tries to match the exponential mean. Only cdfs ("p") and quantile functions ("q") need to be added for `alloscore` to operate but I'll add densities too for plotting.
 ```{r}
 N <- 10
 y_mean <- 50
-y_gen <- function() rexp(N, rate = 1/y_mean)
+y_gen <- function(Ny=N) rexp(Ny, rate = 1/y_mean)
 
-m_lnorm <- tibble(
+make_m_lnorm <- function(N) {
+tibble(
   target_names = LETTERS[1:N],
 	dist = "lnorm",
-	sdlog = 1 + rpois(10, 8),
+	sdlog = 1 + rpois(N, 8),
   meanlog = log(y_mean) - .5*sdlog,
 ) %>% add_pdqr_funs(types = c("p", "d", "q"))
+}
 
+m_lnorm <- make_m_lnorm(N)
 y <- y_gen()
 ```
 
-We can nore score in one step, returning a data frame of list columns containing the score, the components of the score, the allocations, and information about the optimization proceedure.
+We can now score for an array of Ks in one step, returning a data frame of list columns containing the score, the components of the score, the allocations, and information about the optimization proceedure for each K...
 ```{r}
-a1 <- alloscore(df = m_lnorm, y = y, K = 60)
-a1$components
-a1$xdf[[1]]
+a1 <- alloscore(df = m_lnorm, y = y, K = 60:70)
+a1$xdf[[2]] # allocations for K = 61
+a1 %>% select(K, score) # scores for K in 60:70
 ```
 or via pipes with the necessary parameters added at each step:
 ```{r}
-a1_piped <- m_lnorm %>% allocate(K = 60) %>% alloscore(y = y)
-a1_piped$xdf[[1]]
+a1_piped <- m_lnorm %>% allocate(K = 60:70) %>% alloscore(y = y)
+a1_piped %>% select(K, score)
+```
+
+This works by giving the output of `allocate` an `allocated` class attribute and then calling an `alloscore` method for the `allocated` object.  I'm trying to decide whether it makes sense to have a parallel system for oracles or leave oracle comparison in the jury-rigged state it is in now.
+
+The `xs` column contains data frames for each K recording the iteration history of each allocation. I'll try to wrap this into a plot method soon:
+
+```{r}
+# history for K = 69
+(iters9 <- a1$xs[[9]])
 ```
 
 
 ```{r}
-m_lnorm %>% allocate(K = 100) -> a1
-m_lnorm %>% alloscore(y = y, K = 100)->o1
+iters9 %>% rename(`0` = qs) %>% 
+  tidyr::pivot_longer(
+    cols = -c(target_names), 
+    names_to = "iteration", 
+    values_to = "allocation") %>% 
+  mutate(
+    iteration = as.numeric(iteration)
+    ) %>% 
+  ggplot(aes(x = iteration, y = allocation, color = target_names)) + 
+  geom_line() + geom_point() + theme_classic()
+```
 
-o1 <- m_lnorm %>% oracle_alloscore(y=y,K=6)
-a1 <- m_lnorm %>% allocate(K = .2)
-a1 <- m_lnorm %>% allocate(K = 10:15)
+The generalize piecwise lnear loss functions used for each target and the parameters used to construct them are stored in an attribute:
+```{r}
 attr(a1, "gpl_df")
-as1 <- m_lnorm %>% allocate(K = 10:15) %>% alloscore(y = y)
-as2 <- alloscore(df = m_lnorm, K = 10:15, y = y)
-as3 <- alloscore(F = m_lnorm$F, Q = m_lnorm$Q, K = 10:15, y = y)
-cbind(
-  as1$score,
-  as2$score,
-  as3$score
-)
+```
+$O$ and $U$ are mostly still just placeholders since I haven't yet adapted `allocate` to accept them, but this should be simple.
 
+
+Also, `alloscore` (and `allocate`) can take the forecast (and gpl) info as individual arguments:
+```{r}
+K <- c(10, 20, 30)
+as_indiv <- alloscore(F = m_lnorm$F, Q = m_lnorm$Q, K = K, y = y)
+as_df <- m_lnorm %>% allocate(K = K) %>% alloscore(y = y)
+
+full_join(
+  as_indiv %>% select(K, score), 
+  as_df %>% select(K, score), 
+  by = "K"
+)
+```
+
+
+```{r}
 oa <- oracle_allocate(m_lnorm, y = y, K = 10:15)
 oa1 <- oracle_allocate(y = y, K = 10:15)
 oa1 <- oracle_allocate(y = y, K = 10, g = "log(1+x)")
+```
 
-Ks <- seq(10,20, length.out=50)
-
+FWIW, the time savings seems like it's around 2/3, but my bet is this will increase as we get into hub analyses...
+```{r}
+N <- 50
+m_lnorm2 <- make_m_lnorm(N)
+Ks <- seq(25, 300, length.out = 100)
 {
+cat("new way: ")
 start.time <- Sys.time()
-allocate(df = m_lnorm, K = Ks, eps_K = .0001)
+allocate(df = m_lnorm2, K = Ks, eps_K = .0001)
 end.time <- Sys.time()
 print(end.time-start.time)
 }
 
 {
+cat("bulldozer way: ")
 start.time <- Sys.time()
 for (Kind in Ks) {
-  allocate(df = m_lnorm, K = Kind, eps_K = .0001)
+  allocate(df = m_lnorm2, K = Kind, eps_K = .0001)
 }
 end.time <- Sys.time()
 print(end.time-start.time)

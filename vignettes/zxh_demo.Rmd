@@ -1,5 +1,6 @@
 ---
-title: "zxh_demo"
+title: "Reproducing Tables 2 and 3 in Zhang Xu and Hua"
+bibliography: allocation.bib
 output: rmarkdown::html_vignette
 vignette: >
   %\VignetteIndexEntry{zxh_demo}
@@ -12,7 +13,10 @@ editor_options:
 ```{r, include = FALSE}
 knitr::opts_chunk$set(
   collapse = TRUE,
-  comment = "#>"
+  comment = "#>",
+  fig.width = 8,
+  fig.height = 8,
+  out.width = "100%"
 )
 ```
 
@@ -21,25 +25,40 @@ library(tidyverse)
 library(alloscore)
 ```
 
+In this vignette we reproduce the results which are transcribed from tables 2 and 3 in [@zhang2009binary] into `zxh_tab2` and `zxh_tab3`:
 ```{r}
-zxh_norm_ex <- zxh_tab2 %>% 
+zxh_tab2
+zxh_tab3
+```
+Column descriptions are in the data set help files.
+
+We begin by converting their "newsvendor" parameters to the `kappa` and `alpha` parameters we use in `alloscore`:
+```{r}
+(zxh_norm_ex <- zxh_tab2 %>% 
      mutate(
      stdize_news_params(ax = c, a_minus = v, a_plus = h),
-     .after = c) %>% as_tibble()
+     .after = c) %>% as_tibble())
+```
 
+Next we use the convenience function `add_pdqr_funs` to create list columns of forecast cdfs and quantile functions
+```{r}
 zxh_norm_ex_forecasts <- zxh_norm_ex %>% 
    rename(mean = mu, sd = sigma) %>% 
    add_pdqr_funs(dist = "norm", types = c("p", "q")) %>% 
    mutate(q = map2_dbl(Q, alpha, exec), .after = q_zxh)
-
-allo_norm_ex <- allocate(zxh_norm_ex_forecasts, w = "c", K = 2500, target_names = "Product")
-(zxh_norm_ex_allo <- full_join(zxh_norm_ex_forecasts, allo_norm_ex$xdf[[1]], by = "Product") %>% 
-  relocate(Opt, allocations))
 ```
 
+We now allocate with `alloscore::allocate` for the constraint of `K=2500` used for this example by ZXH and compare with their results:
+```{r}
+allo_norm_ex <- allocate(zxh_norm_ex_forecasts, w = "c", K = 2500, target_names = "Product")
+(zxh_norm_ex_allo <- full_join(zxh_norm_ex_forecasts, allo_norm_ex$xdf[[1]], by = "Product") %>% 
+  relocate(Opt, x))
+```
+
+WitH `allocate`'s default convergence parameters `eps_lam = 1e-4` and `eps_K = .01` it took us 15 iterations to find our allocations, the last few of which maybe weren't necessary:
 ```{r}
 allo_norm_ex$xs[[1]] %>% rename(`0` = qs) %>% 
-  pivot_longer(
+  tidyr::pivot_longer(
     cols = -Product, 
     names_to = "iteration", 
     values_to = "allocation") %>% 
@@ -51,8 +70,10 @@ allo_norm_ex$xs[[1]] %>% rename(`0` = qs) %>%
   geom_line() + geom_point() + theme_classic()
 ```
 
+Now we compute the components of the objective function which are the expected pinball losses.
+(`alloscore` could also be used to do this... will add in next draft.)
 ```{r}
-Zs_norm <- zxh_norm_ex_allo %>% mutate(
+(Zs_norm <- zxh_norm_ex_allo %>% mutate(
   expected_gpl_loss = pmap(., function(F, kappa, alpha, mu, c, ...) {
     exp_gpl_loss_fun(
       F = F,
@@ -62,25 +83,36 @@ Zs_norm <- zxh_norm_ex_allo %>% mutate(
     })
   ) %>% mutate(
   Z_Opt = map2_dbl(expected_gpl_loss, Opt, exec),
-  Z_allo = map2_dbl(expected_gpl_loss, allocations, exec)
-) %>% select(Product, c, Opt, allocations, Z_Opt, Z_allo)
+  Z_allo = map2_dbl(expected_gpl_loss, x, exec)
+) %>% select(Product, c, Opt, x, Z_Opt, Z_allo))
 ```
 
+And compare our objective function values:
 ```{r}
 Zs_norm %>% summarise(
   Z_Opt = sum(Z_Opt),
   Z_allo = sum(Z_allo),
   cost_zxh = sum(c*Opt),
-  cost_allo= sum(c*allocations)
-  ) %>% pivot_longer(everything()) %>%
+  cost_allo= sum(c*x)
+  ) %>% tidyr::pivot_longer(everything()) %>%
   as.data.frame()
 ```
 
-```{r}
-zxh_beta_ex <- zxh_tab3 %>% mutate(
-     stdize_news_params(ax = c, a_minus = v, a_plus = h),
-     .after = c)
+Now repeat the process for their second data set which uses beta distributions with supports bounded away from 0:
 
+```{r}
+zxh_tab3
+```
+
+Reparametrize:
+```{r}
+(zxh_beta_ex <- zxh_tab3 %>% mutate(
+     stdize_news_params(ax = c, a_minus = v, a_plus = h),
+     .after = c))
+```
+
+Create distributions and allocate:
+```{r}
 zxh_beta_ex_forecasts <- zxh_beta_ex %>% 
    rename(shape1 = Balpha, shape2 = Bbeta) %>% 
    add_pdqr_funs(
@@ -92,12 +124,13 @@ zxh_beta_ex_forecasts <- zxh_beta_ex %>%
 
 allo_beta_ex <- allocate(zxh_beta_ex_forecasts, w = "c", K = 6500, target_names = "Product")
 (zxh_beta_ex_allo <- full_join(zxh_beta_ex_forecasts, allo_beta_ex$xdf[[1]], by = "Product") %>%
-  relocate(Opt, allocations))
+  relocate(Opt, x))
 ```
 
+Plot iterations:
 ```{r}
 allo_beta_ex$xs[[1]] %>% rename(`0` = qs) %>% 
-  pivot_longer(
+  tidyr::pivot_longer(
     cols = -Product, 
     names_to = "iteration", 
     values_to = "allocation") %>% 
@@ -107,8 +140,7 @@ allo_beta_ex$xs[[1]] %>% rename(`0` = qs) %>%
     ) %>% 
   ggplot(aes(x = iteration, y = allocation, color = Product)) + 
   geom_line() + geom_point() + theme_classic()
-```
-```{r}
+
 Zs_beta <- zxh_beta_ex_allo %>% mutate(
   expected_gpl_loss = pmap(., function(F, kappa, alpha, mu, c, ...) {
     exp_gpl_loss_fun(
@@ -119,16 +151,17 @@ Zs_beta <- zxh_beta_ex_allo %>% mutate(
     })
   ) %>% mutate(
   Z_Opt = map2_dbl(expected_gpl_loss, Opt, exec),
-  Z_allo = map2_dbl(expected_gpl_loss, allocations, exec)
-) %>% select(Product, c, Opt, allocations, Z_Opt, Z_allo)
+  Z_allo = map2_dbl(expected_gpl_loss, x, exec)
+) %>% select(Product, c, Opt, x, Z_Opt, Z_allo)
 ```
 
+Compare scores:
 ```{r}
 Zs_beta %>% summarise(
   Z_Opt = sum(Z_Opt),
   Z_allo = sum(Z_allo),
   cost_zxh = sum(c*Opt),
-  cost_allo= sum(c*allocations)
-  ) %>% pivot_longer(everything()) %>%
+  cost_allo= sum(c*x)
+  ) %>% tidyr::pivot_longer(everything()) %>%
   as.data.frame()
 ```
