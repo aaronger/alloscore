@@ -1,10 +1,10 @@
 Package: alloscore
-Title: What the Package Does (One Line, Title Case)
-Version: 0.0.0.9000
+Title: Tools for Implementing Allocation Scoring Rules
+Version: 0.0.0.9001
 Authors@R: 
-    person("First", "Last", , "first.last@example.com", role = c("aut", "cre"),
+    person("Aaron", "Gerding", , "agerding@umass.edu", role = c("aut", "cre"),
            comment = c(ORCID = "YOUR-ORCID-ID"))
-Description: What the package does (one paragraph).
+Description: TBA.
 License: GPL (>= 3)
 Encoding: UTF-8
 LazyData: true
@@ -17,7 +17,9 @@ Suggests:
 Config/testthat/edition: 3
 Imports: 
     rlang,
-    purrr
+    purrr,
+    dplyr,
+    tibble
 Depends: 
     R (>= 2.10)
 VignetteBuilder: knitr

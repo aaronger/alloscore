@@ -5,21 +5,28 @@
 \title{Allocate to minimize expected gpl loss under forecasts F with constraint K}
 \usage{
 allocate(
+  df = NULL,
+  K,
+  target_names = NA,
   F,
   Q,
-  w,
-  K,
+  w = 1,
   kappa = 1,
-  alpha,
-  dg = 1,
-  eps_K,
-  eps_lam,
-  point_mass_window = 0.001,
-  Trace = FALSE,
-  verbose = FALSE
+  alpha = 1,
+  g = "x",
+  dg = NA,
+  eps_lam = 1e-04,
+  eps_K = 0.01,
+  point_mass_window = 0.001
 )
 }
 \arguments{
+\item{df}{data frame containing columns for other list arguments which are used when
+those arguments (e.g. \code{F}) are left empty or give the name of a column of df,
+e.g., \code{F = "cdf"}}
+
+\item{K}{vector of constraints on total provision (cannot be supplied via df)}
+
 \item{F}{list of cdf functions for forecast distributions}
 
 \item{Q}{list of quantile functions for forecast distributions}
@@ -27,26 +34,31 @@ allocate(
 \item{w}{numeric vector with cost per unit resource allocated to each
 coordinate}
 
-\item{K}{constraint on total provision}
-
 \item{kappa}{scale factor}
 
 \item{alpha}{normalized loss when outcome y exceeds forecast x}
 
+\item{g}{list of strings describing increment functions which will be used
+to form gpl functions for each coordinate; should be written using \code{x}, e.g. "log(x)";
+will be differentiated using \code{stats::D} so don't try anything fancy; defaults to NULL
+deferring to \code{dg}}
+
 \item{dg}{numeric constant(s) or function(s) to calculate the derivative of the
-gpl function \code{g} for each coordinate}
+increment function \code{g} for each coordinate; defaults to 1 corresponding to pinball loss}
 
-\item{Trace}{logical, record iterations}
-
-\item{Verbose}{logical, echo K and report number of iterations required to find allocation}
+\item{point_mass_window}{}
 }
 \value{
-If \code{Trace} is \code{FALSE}, a numeric vector of length \code{N} givig the
-optimal allocations. If \code{Trace} is \code{TRUE}, a named list with entries:
-\itemize{
-\item \code{x}: numeric vector of length \code{N} giving the optimal allocations
-\item \code{xs}: list of values of \code{x} over the course of optimization
-\item \code{lambdas}: numeric vector of values of lambda over the course of optimization
+data frame with (list-)columns
+\describe{
+\item{K}{constraints}
+\item{x}{allocations for constraints}
+\item{xs}{data frames with allocations at each iteration as columns}
+\item{lam_seq}{sequences of Lagrange multipliers tested at each iteration}
+\item{qs_OK}{}
+\item{post-processed}{whether post-processing was used at this K to deal with
+plateaus in the objective function; TRUE in particular whenever oracle allocation is
+performed for an active K.}
 }
 }
 \description{

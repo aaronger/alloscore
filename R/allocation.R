@@ -1,130 +1,394 @@
-#' @importFrom purrr map map2 pmap map_dbl map_int partial
-#' @importFrom rlang exec is_missing is_list
-#' @importFrom dplyr mutate
+#' @importFrom purrr map map2 pmap map_dbl map2_dbl pmap_dbl map_int partial map_lgl pmap_lgl
+#' @importFrom rlang exec is_missing is_list is_function caller_env
+#' @importFrom dplyr mutate arrange
+#' @importFrom tibble tibble
 NULL
 
-#' Basic g-linear loss for under-prediction of an outcome y
+#' Allocate to minimize expected gpl loss under forecasts F with constraint K
 #'
-#' @param g a non-decreasing function
-#'
-#' @return function of prediction x and outcome y that only penalizes under-prediction
-#' @export
-#'
-#' @examples
-under_loss <- function(g = function(u) {u}) {
-  function(x,y) {pmax(g(y) - g(x), 0)}
-}
-
-#' Basic expected g-linear loss for under-prediction of a random outcome Y
-#'
-#' @param dg derivative of g, probably will work even with discontinuities
-#' @param F predictive cdf of an outcome Y
-#' @return function of prediction x giving expected g-linear loss for under-predicting Y~F
-#' @export
-#'
-#' @examples
-expected_under_loss <- function(dg = function(y) {1}, F) {
-  Vectorize(function(x) {
-    integrate(f = function(y) {(1-F(y))*dg(y)}, lower = x, upper = Inf, rel.tol = .001)$value
-    })
-}
-
-#' Basic g-linear loss for over-prediction of an outcome y
-#'
-#' @param g a non-decreasing function
-#'
-#' @return function of prediction x and outcome y that only penalizes over-prediction
-#' @export
-#'
-#' @examples
-over_loss <- function(g = function(u) {u}) {
-  function(x,y) {pmax(g(x) - g(y), 0)}
-}
-
-#' Basic expected g-linear loss for over-prediction of a random outcome Y
-#'
-#' @param dg derivative of g, probably will work even with discontinuities
-#' @param F predictive cdf of an outcome Y
-#' @return function of prediction x giving expected g-linear loss for over-predicting Y~F
-#' @export
-#'
-#' @examples
-expected_over_loss <- function(dg = function(y) {1}, F) {
-  Vectorize(function(x) {
-    integrate(f = function(y) {F(y)*dg(y)}, lower = Inf, upper = x, rel.tol = .001)$value
-    })
-}
-
-#' Create generalized piecewise linear (gpl) scoring/loss function,
-#' which in general need not be piecewise linear
-#'
-#' @param g gpl function
+#' @param df data frame containing columns for other list arguments which are used when
+#'  those arguments (e.g. `F`) are left empty or give the name of a column of df,
+#'  e.g., `F = "cdf"`
+#' @param K vector of constraints on total provision (cannot be supplied via df)
+#' @target_names vector of names for allocation targets; will default to indices corresponding to
+#'  other vector arguments
+#' @param F list of cdf functions for forecast distributions
+#' @param Q list of quantile functions for forecast distributions
+#' @param w numeric vector with cost per unit resource allocated to each
+#'  coordinate
 #' @param kappa scale factor
 #' @param alpha normalized loss when outcome y exceeds forecast x
-#' @param U loss when outcome y exceeds forecast x; equals kappa*alpha
-#' @param O cost when forecast x exceeds outcome y; equals kappa*(1-alpha)
-#' @param const an added constant, defaults to 0 for which gpl loss function `L` will have `L(x,x) = 0`
-#' @return function with arguments `x` and `y` giving loss
+#' @param g list of strings describing increment functions which will be used
+#'  to form gpl functions for each coordinate; should be written using `x`, e.g. "log(x)";
+#'  will be differentiated using `stats::D` so don't try anything fancy; defaults to NULL
+#'  deferring to `dg`
+#' @param dg numeric constant(s) or function(s) to calculate the derivative of the
+#'  increment function `g` for each coordinate; defaults to 1 corresponding to pinball loss
+#' @param eps_lam
+#' @param eps_K
+#' @param point_mass_window
+#'
+#' @return data frame with (list-)columns
+#' \describe{
+#'   \item{K}{constraints}
+#'   \item{x}{allocations for constraints}
+#'   \item{xs}{data frames with allocations at each iteration as columns}
+#'   \item{lam_seq}{sequences of Lagrange multipliers tested at each iteration}
+#'   \item{qs_OK}{}
+#'   \item{post-processed}{whether post-processing was used at this K to deal with
+#'    plateaus in the objective function; TRUE in particular whenever oracle allocation is
+#'    performed for an active K.}
+#' }
+
 #' @export
-gpl_loss_fun <- function(g = function(u) {u},
-                         kappa = 1, alpha, O, U, const = 0) {
-  if (!xor(is_missing(U), is_missing(alpha))) {
-    stop("Either U or alpha must be specified, but not both")
+#'
+#' @examples
+allocate <- function(df = NULL, K,
+                     target_names = NA,
+                     F, Q, w = 1,
+                     kappa = 1, alpha = 1,
+                     g = "x", dg = NA,
+                     eps_lam = 1e-4,
+                     eps_K = .01,
+                     point_mass_window = .001) {
+  if (is.character(target_names) && (length(target_names) == 1)) {
+    target_col_name <- target_names
+  } else {
+    target_col_name <- NULL
   }
-  if (!is_missing(U)) {
-    function(x, y) {O*over_loss(g)(x,y) + U*under_loss(g)(x,y) + const}
+  if (!is.null(df)) {
+    get_args_from_df(df)
+    N <- nrow(df)
+  } else {
+    N <- length(F)
   }
-  if (!is_missing(alpha)) {
-    function(x, y) {kappa*((1-alpha)*over_loss(g)(x,y) + alpha*under_loss(g)(x,y)) + const}
+  gpl <- new_gpl_df(N = N, target_names = target_names, g = g, kappa = kappa, alpha = alpha)
+  if (!is.null(target_col_name)) {
+    gpl <- gpl %>% rename(!!target_col_name := target_names)
+  } else {
+    target_col_name <- "target_names"
   }
+
+  # initialize allocation at q_i if alpha_i < 1 or something big enough to
+  # violate constraint if not
+  qs <- map2_dbl(Q, alpha, exec)
+  qs[qs==Inf] <- (w^(-1)*rep(1,N)*2*max(K))[qs==Inf]
+  # get marginal expected benefits
+  Lambda <- meb_gpl_df(df = gpl, F = F, w = w)
+  # store ther values at boundary
+  Lambda0 <- map2_dbl(Lambda, 0, exec)
+  # set up a data frame to track iterations for all K
+  # with columns for binary search interval endpoints at lambda = MEB = 0 (corresponding to
+  # allocation at quantile) and the maximum over target set of MEB's evaluated at x = 0
+  # (corresponding to the maximum MEB if the allocations were all reduced as much as possible - to 0)
+  # as well as columns for the current lambda and previous lambda iterates
+  Kdf <- tibble(
+    K = K,
+    xs = list(gpl %>% select(target_col_name) %>% mutate(`qs` = qs)), # for iterations
+    x = list(tibble::deframe(xs[[1]])), # for final allocation
+    qs_OK = map(x, ~sum(w*.)) < K,
+    converged = FALSE,
+    lamL = 0,
+    lamL_seq = list(0),
+    lamU = max(Lambda0)*(1+2*eps_lam),
+    lamU_seq = list(lamU),
+    lam = 0,
+    lam_seq = list(0),
+    lam_prev = 0
+  ) %>% arrange(K)
+  # remove rows where quantiles satisfy constraint
+  out <- Kdf %>% dplyr::filter(qs_OK) %>% mutate(converged = TRUE)
+  Kdf <- Kdf %>% dplyr::filter(!qs_OK)
+  # return if there are no other rows
+  if (nrow(Kdf) == 0) {
+    return(out)
+  }
+  # create counter for labeling iterates
+  tau <- 1
+  # return x = 0 if there is no marginal benefit to allocating more than 0 in any component
+  if (Kdf$lamU[1] <= 0) {
+    Kdf$x <- list(rep(0, N))
+    out <- rbind(out, Kdf) %>% arrange(K) # would out ever be non-empty here?
+    return(out)
+  }
+
+  while (nrow(Kdf) > 0) {
+    Kdf <- Kdf %>% mutate(
+      # calculate next lambdas
+      lam = (lamL + lamU)/2,
+      # store them
+      lam_seq = map2(lam_seq, lam, function(lam_seq, lam) c(lam_seq, lam))
+    )
+    lams <- unique(Kdf$lam)
+    for (lam_tau in lams) {
+      Kdf_lam <- Kdf %>% dplyr::filter(lam == lam_tau)
+      x_tau <- Kdf_lam$x[[1]] # this is the whole point of using Kdf
+      stopifnot(length(lam_prev <- unique(Kdf_lam$lam_prev)) == 1) # sanity check
+      for (i in 1:N) {
+        tryCatch({
+          if (lam_tau > Lambda0[i]) {
+            # then lam gives a negative quantile on i so we allocate nothing at this iteration
+            x_tau[i] <- 0
+          } else {
+            # we should expect a critical pt greater than x_tau[i] = 0 and write the ith
+            # component of the gradient equation
+            lam_grad = function(xi) {
+              Lambda[[i]](xi) - lam_tau
+            }
+            # obtain a search interval in which to look for a root of lam_grad
+            if (lam_tau < lam_prev) {
+              # if lam has decreased we need to look closer to the quantile
+              I <- c(x_tau[i] * (1 - point_mass_window), qs[i])
+            } else {
+              # and if not we need to look further toward 0
+              I <- c(0, x_tau[i] * (1 + point_mass_window))
+            }
+            if (lam_grad(I[1]) * lam_grad(I[2]) < 0) {
+              # then adjust x_tau[i] to that root.
+              x_tau[i] <- uniroot(f = lam_grad, interval = I)$root
+            }
+            # Otherwise leave x_tau[i] unchanged which will cause lam to increase on next step
+          }
+        }, error = function(e) {
+          message(paste(
+            "Error at index =", i,
+            ", target =", target_names[i],
+            ", tau =", tau,
+            ": ", e$message))
+          return(NULL)
+        })
+      }
+      Kdf_lam <- Kdf_lam %>% mutate(
+        x = list(x_tau),
+        xs = map(xs, ~mutate(., !!as.character(tau) := x_tau)),
+        lam_prev = lam_tau,
+        # check whether we have under- or over-shot K and narrow search interval accordingly
+        lamL = ifelse(sum(w*x_tau) > K, lam_tau, lamL),
+        lamL_seq = map2(lamL_seq, lamL, function(lamL_seq, lamL) c(lamL_seq, lamL)),
+        lamU = ifelse(sum(w*x_tau) <= K, lam_tau, lamU),
+        lamU_seq = map2(lamU_seq, lamU, function(lamU_seq, lamU) c(lamU_seq, lamU)),
+        # check if converged
+        converged = ((lamU - lamL)/(lamU) < eps_lam) | (lamU <= eps_lam)
+      )
+      Kdf[Kdf$lam == lam_tau,] <- Kdf_lam
+    }
+    out <-tryCatch({rbind(out, Kdf %>% dplyr::filter(converged))},
+                   error = function(e) {
+                     message(paste("Error at iteration:", tau, "Ks done =", paste(out$K, collapse = ", ")))
+                     #browser()
+                     })
+    Kdf <- Kdf %>% dplyr::filter(!converged)
+    tau <- tau + 1
+  }
+  # post-processing for plateaus, oracles in particular
+  out <- out %>% mutate(
+    post_processed = pmap_lgl(list(x, K, qs_OK),
+                          function(x, K, qs_OK) {
+                            (abs((sum(w * x) - K) / K) > eps_K) && !qs_OK
+                          }))
+  out <- out %>% mutate(
+    x = pmap(list(post_processed, x, K, xs, lamU, qs_OK),
+             function(post_processed, x, K, xs, lamU, qs_OK) {
+               if (post_processed) {
+                 if (lamU <= eps_lam) {
+                   if (sum(w * x) > K) {
+                     stop("strange situation")
+                   }
+                   Delta <- function(t) {
+                     sum(w * t * x) - K
+                   }
+                   t_star <-
+                     uniroot(f = Delta,
+                             interval = c(1, 2),
+                             extendInt = "upX")$root
+                   x <- t_star * x
+                 } else {
+                   x_L <- x_U <- x
+                   iter_num <- ncol(xs) - 2
+                   for (j in 1:iter_num) {
+                     if (j == iter_num + 1) {
+                       stop("Something went very wrong")
+                     }
+                     x_L <- pmin(x_L, xs[[iter_num - j + 2]])
+                     x_U <- pmax(x_U, xs[[iter_num - j + 2]])
+                     Delta <- function(t) {
+                       sum(w * ((1 - t) * x_L + t * x_U)) - K
+                     }
+                     if ((Delta(0) < 0) & (Delta(1) > 0))
+                       break
+                   }
+                   t_star <- uniroot(f = Delta, interval = c(0, 1))$root
+                   x <- (1 - t_star) * x_L + t_star * x_U
+                 }
+               }
+      return(x)
+    }))
+  out <- out %>% select(-c(converged, lam_prev)) %>% arrange(K) %>%
+    mutate(xdf = map(x, ~tibble::enframe(., name = target_col_name, value = "x")))
+  return(structure(
+    out,
+    class = c("allocated", class(out)),
+    gpl_df = gpl,
+    w = w,
+    target_col_name = target_col_name))
 }
 
-#' Create gpl expected loss function
+#' Score the allocations from set of forecasts against realized outcomes `y`.
 #'
-#' @param dg derivative of gpl function
-#' @param F predictive CDF
-#' @param kappa scale factor
-#' @param alpha normalized loss when outcome y exceeds forecast x
-#' @param U loss when outcome y exceeds forecast x; equals kappa*alpha
-#' @param O cost when forecast x exceeds outcome y; equals kappa*(1-alpha)
-#' @return function with argument x giving the expected loss with respect to the
-#'  distribution F
+#' @param df data frame containing columns for other list arguments which are used only when
+#'  those arguments (e.g. `F`) are not passed directly
+#'
+#' @return a date frame of the form returned by `allocate` with additional columns for
+#' \itemize{
+#'   \item `components_raw`: the raw gpl losses in each location
+#'   \item `score_raw`: the sum of the raw components
+#'   \item `components_oracle`: the gpl losses of an oracle in each location
+#'   \item `score_oracle`: the sum of the oracle's components
+#'   \item `components`: forecaster's difference from the oracle
+#'   \item `score`: the forecaster's score minus the oracle's
+#' }
 #' @export
-gpl_loss_exp_fun <- function(dg = function(u) {1}, F,
-                              kappa = 1, alpha, O, U,
-                              const = 0) {
-  if (!xor(is_missing(U), is_missing(alpha))) {
-    stop("Either U or alpha must be specified, but not both")
-  }
-  if (!is_missing(U)) {
-    function(x) {O*expected_over_loss(dg,F)(x) + U*expected_under_loss(dg,F)(x)}
-  }
-  if (!is_missing(alpha)) {
-    function(x) {kappa*((1-alpha)*expected_over_loss(dg,F)(x) + alpha*expected_under_loss(dg,F)(x))}
-  }
+#'
+#' @examples
+alloscore <- function(df = NULL, ...) {
+  UseMethod("alloscore")
 }
 
-#' Create function to calculate the marginal expected benefit of allocating an
-#' additional unit of resources to a given target.
+#' Default method for alloscore, used when parameters passed individually; works by
+#' allocating and then forwarding to allocated method.
+#' @param y numeric observed data value
+#' @param against_oracle logical; if `TRUE`, components and scores relative to oracle are
+#'  included
+#' @inheritParams allocate
+#' @rdname alloscore
+#' @export
+alloscore.default <- function(df = NULL, K, target_names = NA,
+                              y, F, Q, w = 1,
+                              kappa = 1,
+                              alpha = 1,
+                              g = "x",
+                              dg = NA,
+                              eps_K = .01,
+                              eps_lam = 1e-4,
+                              against_oracle = TRUE) {
+
+  # allocate will handle validation and attribute assignments
+  if (!is.null(df)) {
+    get_args_from_df(df)
+  }
+  allocate(
+    target_names = target_names,
+    F = F,
+    Q = Q,
+    w = w,
+    K = K,
+    kappa = kappa,
+    alpha = alpha,
+    g = g,
+    dg = dg,
+    eps_K = eps_K,
+    eps_lam = eps_lam
+  ) %>%
+    alloscore(y = y, against_oracle = against_oracle) # uses allocated method
+}
+
+#' Allocation scoring method for forecasts with computed allocations and gpl loss functions.
 #'
-#' @param q_scale scaling factor for resource level x; used for aligning marginal expected
-#'  benefit functions of different targets (and parameters) on single x interval.
-#' @param ... ignored
+#' @param df an allocated data frame
+#' @param y numeric observed data value
+#' @param against_oracle logical; if `TRUE`, components and scores relative to oracle are
+#'  included
+#'
+#' @rdname alloscore
+#' @export
+#'
+#' @examples
+alloscore.allocated <- function(df, y, against_oracle = TRUE) {
+  stopifnot(length(y) == length(df$x[[1]]))
+  gpl_list <- attr(df, "gpl_df")$gpl_loss_fun # would a join inside the map below be safer?
+  scored_df <- df %>% mutate(
+    xdf = map(xdf, function(xdf) {
+      xdf %>% mutate(
+        y = y,
+        gpl = gpl_list,
+        components_raw = pmap_dbl(list(gpl, x, y), function(gpl, x, y) {gpl(x,y)})
+        ) %>% select(-gpl)
+    }),
+    score_raw = map_dbl(xdf, ~sum(dplyr::pull(.,components_raw)))
+  )
+
+  if (against_oracle) {
+    # move this code to oracle_alloscore?
+    oracle_scores <- attr(df, "gpl_df") %>%
+      select(target_names, g, kappa, alpha) %>%
+      mutate(kappa = alpha,
+             alpha = 1) %>%
+      oracle_allocate(y = y,
+                      w = attr(df, "w"),
+                      K = df$K) %>%
+      alloscore(y = y, against_oracle = FALSE) %>%
+      mutate(xdf = map(xdf, ~rename(., oracle = x, components_oracle = components_raw))) %>%
+      rename(xdf_oracle = xdf, score_oracle = score_raw)
+    scored_df <-
+      dplyr::left_join(
+        scored_df,
+        oracle_scores %>% select(K, xdf_oracle, score_oracle), by = "K") %>%
+      mutate(
+        xdf = map2(xdf, xdf_oracle, function(xdf, xdf_oracle) {
+          bind_cols(xdf, xdf_oracle %>% select(oracle, components_oracle)) %>%
+            mutate(components = components_raw - components_oracle) %>%
+            relocate(oracle, .after = y)
+        }),
+        score = score_raw - score_oracle
+      )
+  }
+  return(scored_df)
+}
+
+#' Allocate according to an oracle's knowledge of outcome y
+#'
+#' @param y
 #' @inheritParams allocate
 #'
-#' @return a function with argument x that calculates the marginal expected benefit
+#' @return see `allocate`
 #' @export
-#' @details
-#' Note that this is minus the derivative of the expected score \eqn{\overline{s}_F}
 #'
 #' @examples
-margexb_fun <- function(F, kappa = 1, alpha, w, dg = 1, q_scale = 1,...) {
-  if (!is_function(dg)) {
-    return(function(x) {w^(-1)*kappa*dg*(alpha - F(x*q_scale))})
-  }
-  function(x) {w^(-1)*kappa*dg(x*q_scale)*(alpha - F(x*q_scale))}
+oracle_allocate <- function(df = NULL, y, K, ...) {
+  allocate(
+    df = df,
+    F = map(y, function(y) {function(x) {1*(x>=y)}}),
+    Q = map(y, function(y) {function(p) {y}}),
+    K = K,
+    ...
+  )
 }
 
+#' Score according to an oracle's knowledge of outcome y
+#'
+#' @param y
+#' @inheritParams alloscore
+#'
+#' @return see `alloscore`
+#'
+#' @examples
+oracle_alloscore <- function(df = NULL, y, K,
+                             kappa = 1, alpha = 1,
+                             g = "x", ...) {
+  stop("Not implemented yet")
+  gpl <- gpl_loss_fun(g, kappa, alpha)
+  oracle_allocate(
+    df = df,
+    y = y,
+    K = K,
+    ...
+  ) %>% mutate(
+    components = map(x, function(x) gpl(x,y)),
+    score = map_dbl(components, sum)
+  )
+}
+
+# Alternative approach to dealing with plateaus in allocate; not currently in use
 find_linear_intervals <- function(Lambda, q, grid_size = 1000, tol = min(.001, 1/grid_size)) {
   intervals <- list()
   k <- 1
@@ -146,244 +410,4 @@ find_linear_intervals <- function(Lambda, q, grid_size = 1000, tol = min(.001, 1
     i <- i+1
   }
   return(intervals)
-}
-
-#' Allocate to minimize expected gpl loss under forecasts F with constraint K
-#'
-#' @param F list of cdf functions for forecast distributions
-#' @param Q list of quantile functions for forecast distributions
-#' @param w numeric vector with cost per unit resource allocated to each
-#'  coordinate
-#' @param K constraint on total provision
-#' @param kappa scale factor
-#' @param alpha normalized loss when outcome y exceeds forecast x
-#' @param dg numeric constant(s) or function(s) to calculate the derivative of the
-#'  gpl function `g` for each coordinate
-#' @param eps_K
-#' @param eps_lam
-#' @param point_mass_window
-#' @param Trace logical, record iterations
-#' @param Verbose logical, echo K and report number of iterations required to find allocation
-#'
-#' @return If `Trace` is `FALSE`, a numeric vector of length `N` givig the
-#'  optimal allocations. If `Trace` is `TRUE`, a named list with entries:
-#'    - `x`: numeric vector of length `N` giving the optimal allocations
-#'    - `xs`: list of values of `x` over the course of optimization
-#'    - `lambdas`: numeric vector of values of lambda over the course of optimization
-#' @export
-#'
-#' @examples
-allocate <- function(F, Q, w, K,
-                     kappa = 1, alpha,
-                     dg = 1,
-                     eps_K, eps_lam,
-                     point_mass_window = .001,
-                     Trace = FALSE,
-                     verbose = FALSE) {
-  # validation
-  largs <- list(F = F, Q = Q, kappa = kappa, alpha = alpha, dg = dg, w = w)
-  N <-  max(map_int(largs, length))
-  for (i in 1:length(largs)) {
-    l <- largs[[i]]
-    # allow for repeated parameters (such as dg = 1) to be given by single term
-    if (length(l) == 1) {
-      if (!is_list(l)) {l <- list(l)}
-      largs[[i]] <- rep(l, N)
-    }
-  }
-  if (any(!map_int(largs, length) == N)) {
-    stop("parameter lists do not have matching lengths")
-  }
-  # get lambda_i's
-  Lambda <- pmap(largs[names(largs) != "Q"], margexb_fun)
-  # initialize allocation at q_i if alpha_i < 1 or something big enough to
-  # violate constraint if not
-  qs <- map2_dbl(Q, alpha, exec) 
-  qs[qs==Inf] <- (w^(-1)*rep(1,N)*2*K)[qs==Inf]
-  x <- qs
-  xs <- list(x)
-  xis <- as.list(x)
-  # return this initial allocation at quantiles if it satisfies constraint
-  if (sum(w*x) < K) {
-    if (Trace) {
-      return(list(x = x, xs = xs, lambdas = 0))
-    }
-    return(x)
-  }
-  # if not, initialize binary search interval endpoints at lambda = MEB = 0 (corresponding to
-  # allocation at quantile) and the maximum over target set of MEB's evaluated at x = 0
-  # (corresponding to the maximum MEB if the allocations were all reduced as much as possible - to 0)
-  lamL <- 0
-  lamU <- max(map2_dbl(Lambda, 0, exec))
-  lamU <- lamU*(1+2*eps_lam)
-  # return x = 0 if there is no marginal benefit to allocating more than 0 in any component
-  if (lamU <= 0) {
-    if (Trace) {
-      return(list(x = rep(0, N), xs = xs, lambdas = NA))
-    }
-    return(rep(0, N))
-  }
-  # initialize sequence of search iterates at the 1st (and now rejected) value 0
-  lam <- c(0)
-  # create counter for labeling iterates, starting with the soon to be calculated 2nd
-  tau <- 1
-  # main loop
-  while (((lamU - lamL)/(lamU) > eps_lam) & (lamU > eps_lam)) {
-    tau <- tau + 1
-    lam[tau] <- (lamL + lamU)/2
-    for (i in 1:N) {
-      if (lam[tau] > Lambda[[i]](0)) {
-        # then lam gives a negative quantile on i so we allocate nothing at this iteration
-        x[i] <- 0
-      } else {
-        # we should expect a critical pt greater than x_i = 0 and write the ith
-        # component of the gradient equation
-        lam_grad = function(xi) {
-          Lambda[[i]](xi) - lam[tau]
-        }
-        # obtain a search interval in which to look for a root of lam_grad
-        if (lam[tau] < lam[tau - 1]) {
-          # if lam has decreased we need to look closer to the quantile
-          I <- c(x[i] * (1-point_mass_window), qs[i])
-        } else {
-          # and if not we need to look further toward 0
-          I <- c(0, x[i] * (1+point_mass_window))
-        }
-        if (lam_grad(I[1]) * lam_grad(I[2]) < 0) {
-        # then adjust x[i] to that root.
-          tryCatch(
-            x[i] <- uniroot(f = lam_grad, interval = I)$root,
-            error = function(e) {
-              message("error at tau = ", tau, "  i = ", i)
-              browser()
-              stop(e)
-            }
-          )
-        }
-        # Otherwise leave x[i] unchanged which will cause lam to increase on next step
-      }
-      xis[[i]][tau] <- x[i]
-    }
-    # check whether we have under- or over-shot K and narrow search interval accordingly
-    if (sum(w*x) < K) {
-      # we should try smaller lambdas that don't take us so far back to 0 so we lower lamU
-      lamU <- lam[tau]
-    }
-    else {
-      # we need larger lambdas that further reduce allocations so we raise lamL
-      lamL <- lam[tau]
-    }
-    xs[[tau]] <- x
-    # old code for dealing with some convergence issue
-    # if (tau > 25) {
-    #   if (xis %>% map_dbl(~sum(abs(diff(tail(.,3))))) %>% max() < .001) break
-    # }
-  }
-  if ((abs((sum(w*x) - K)/K) > eps_K)) {
-    if (lamU <= eps_lam) {
-      if (sum(w*x) > K) {
-        stop("strange situation")
-      }
-      Delta <- function(t) {
-        sum(w*t*x) - K
-      }
-      t_star <- uniroot(f = Delta, interval = c(1,2), extendInt = "upX")$root
-      x <- t_star*x
-    } else {
-      x_L <- x_U <- x
-      for (j in 1:tau) {
-        if (j == tau + 1) {
-          stop("Something went very wrong")
-        }
-        x_L <- pmin(x_L, xs[[tau - j]])
-        x_U <- pmax(x_U, xs[[tau - j]])
-        Delta <- function(t) {
-          sum(w * ((1 - t) * x_L + t * x_U)) - K
-        }
-        if ((Delta(0) < 0) & (Delta(1) > 0))
-          break
-      }
-      t_star <- uniroot(f = Delta, interval = c(0, 1))$root
-      x <- (1-t_star)*x_L + t_star*x_U
-    }
-  }
-  if (Trace) {
-    return(list(x = x, xs = xs, xis = xis, lambdas = lam, meb = Lambda))
-  }
-  if (verbose) cat(K, tau, " ")
-  return(x)
-}
-
-oracle_allocate <- function(y, w, K,
-                            kappa = 1, alpha,
-                            dg = 1,
-                            eps_K, eps_lam = .001, Trace = FALSE) {
-  allocate(
-    F = map(y, function(y) {function(x) {1*(x>=y)}}),
-    Q = map(y, function(y) {function(p) {y}}),
-    w = w,
-    K = K,
-    kappa = kappa,
-    alpha = alpha,
-    dg = dg,
-    eps_K = eps_K,
-    eps_lam = eps_lam,
-    Trace = Trace
-  )
-}
-
-oracle_alloscore <- function(y, w, K,
-                             kappa = 1, alpha,
-                             dg = 1,
-                             eps_K,
-                             eps_lam = .001,
-                             g = function(u) u) {
-  oracle_allos <- oracle_allocate(
-    y = y,
-    w = w,
-    K = K,
-    kappa = kappa,
-    alpha = alpha,
-    dg = dg,
-    eps_K = eps_K,
-    eps_lam = eps_lam)
-  gpl <- gpl_loss_fun(g, kappa, alpha)
-  score <- sum(gpl(oracle_allos, y))
-  return(score)
-}
-
-#' Obtain the allocation score for a given forecast distribution F for the
-#' observed data value y in a constrained allocation problem.
-#'
-#' @param y numeric observed data value
-#' @param g list of functions that calculate the gpl function for each coordinate;
-#'  default value of NULL causes pinball loss to be used
-#' @param against_oracle logical; if `TRUE`, scores are normalized relative to
-#'  an oracle forecaster
-#' @inheritParams allocate
-alloscore <- function(y, F, Q, w, K,
-                      kappa = 1, alpha,
-                      dg = 1,
-                      eps_K,
-                      eps_lam,
-                      g = NULL,
-                      against_oracle = TRUE,
-                      verbose = FALSE) {
-  if (dg == 1) {
-    if (!is.null(g)) {
-      stop("derivatives of non-identity gpl functions must be specified")
-    }
-    g <- function(u) u
-  }
-  allos <- allocate(F, Q, w, K,
-                    kappa, alpha,
-                    dg, eps_K, eps_lam, verbose = verbose)
-  gpl <- gpl_loss_fun(g, kappa, alpha)
-  score <- sum(gpl(allos, y))
-  if (against_oracle) {
-    score <- score - oracle_alloscore(y, w, K,
-                                      kappa, alpha,
-                                      dg, eps_K, eps_lam, g)
-  }
-  return(score)
 }

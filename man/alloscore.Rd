@@ -2,26 +2,36 @@
 % Please edit documentation in R/allocation.R
 \name{alloscore}
 \alias{alloscore}
-\title{Obtain the allocation score for a given forecast distribution F for the
-observed data value y in a constrained allocation problem.}
+\alias{alloscore.default}
+\alias{alloscore.allocated}
+\title{Score the allocations from set of forecasts against realized outcomes \code{y}.}
 \usage{
-alloscore(
+alloscore(df = NULL, ...)
+
+\method{alloscore}{default}(
+  df = NULL,
+  K,
+  target_names = NA,
   y,
   F,
   Q,
-  w,
-  K,
+  w = 1,
   kappa = 1,
-  alpha,
-  dg = 1,
-  eps_K,
-  eps_lam,
-  g = NULL,
-  against_oracle = TRUE,
-  verbose = FALSE
+  alpha = 1,
+  g = "x",
+  dg = NA,
+  eps_K = 0.01,
+  eps_lam = 1e-04,
+  against_oracle = TRUE
 )
+
+\method{alloscore}{allocated}(df, y, against_oracle = TRUE)
 }
 \arguments{
+\item{df}{an allocated data frame}
+
+\item{K}{vector of constraints on total provision (cannot be supplied via df)}
+
 \item{y}{numeric observed data value}
 
 \item{F}{list of cdf functions for forecast distributions}
@@ -31,22 +41,37 @@ alloscore(
 \item{w}{numeric vector with cost per unit resource allocated to each
 coordinate}
 
-\item{K}{constraint on total provision}
-
 \item{kappa}{scale factor}
 
 \item{alpha}{normalized loss when outcome y exceeds forecast x}
 
+\item{g}{list of strings describing increment functions which will be used
+to form gpl functions for each coordinate; should be written using \code{x}, e.g. "log(x)";
+will be differentiated using \code{stats::D} so don't try anything fancy; defaults to NULL
+deferring to \code{dg}}
+
 \item{dg}{numeric constant(s) or function(s) to calculate the derivative of the
-gpl function \code{g} for each coordinate}
+increment function \code{g} for each coordinate; defaults to 1 corresponding to pinball loss}
 
-\item{g}{list of functions that calculate the gpl function for each coordinate;
-default value of NULL causes pinball loss to be used}
-
-\item{against_oracle}{logical; if \code{TRUE}, scores are normalized relative to
-an oracle forecaster}
+\item{against_oracle}{logical; if \code{TRUE}, components and scores relative to oracle are
+included}
+}
+\value{
+a date frame of the form returned by \code{allocate} with additional columns for
+\itemize{
+\item \code{components_raw}: the raw gpl losses in each location
+\item \code{score_raw}: the sum of the raw components
+\item \code{components_oracle}: the gpl losses of an oracle in each location
+\item \code{score_oracle}: the sum of the oracle's components
+\item \code{components}: forecaster's difference from the oracle
+\item \code{score}: the forecaster's score minus the oracle's
+}
 }
 \description{
-Obtain the allocation score for a given forecast distribution F for the
-observed data value y in a constrained allocation problem.
+Score the allocations from set of forecasts against realized outcomes \code{y}.
+
+Default method for alloscore, used when parameters passed individually; works by
+allocating and then forwarding to allocated method.
+
+Allocation scoring method for forecasts with computed allocations and gpl loss functions.
 }
