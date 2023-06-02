@@ -10,11 +10,12 @@ alloscore(df = NULL, ...)
 
 \method{alloscore}{default}(
   df = NULL,
+  K,
+  target_names = NA,
   y,
   F,
   Q,
   w = 1,
-  K,
   kappa = 1,
   alpha = 1,
   g = "x",
@@ -29,6 +30,8 @@ alloscore(df = NULL, ...)
 \arguments{
 \item{df}{an allocated data frame}
 
+\item{K}{vector of constraints on total provision (cannot be supplied via df)}
+
 \item{y}{numeric observed data value}
 
 \item{F}{list of cdf functions for forecast distributions}
@@ -37,8 +40,6 @@ alloscore(df = NULL, ...)
 
 \item{w}{numeric vector with cost per unit resource allocated to each
 coordinate}
-
-\item{K}{vector of constraints on total provision (cannot be supplied via df)}
 
 \item{kappa}{scale factor}
 

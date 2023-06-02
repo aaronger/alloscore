@@ -224,8 +224,13 @@ allocate <- function(df = NULL, K,
       return(x)
     }))
   out <- out %>% select(-c(converged, lam_prev)) %>% arrange(K) %>%
-    mutate(xdf = map(x, ~tibble::enframe(., name = target_col_name, value = "allocations")))
-  return(structure(out, class = c("allocated", class(out)), gpl_df = gpl, w = w))
+    mutate(xdf = map(x, ~tibble::enframe(., name = target_col_name, value = "x")))
+  return(structure(
+    out,
+    class = c("allocated", class(out)),
+    gpl_df = gpl,
+    w = w,
+    target_col_name = target_col_name))
 }
 
 #' Score the allocations from set of forecasts against realized outcomes `y`.
@@ -257,18 +262,22 @@ alloscore <- function(df = NULL, ...) {
 #' @inheritParams allocate
 #' @rdname alloscore
 #' @export
-alloscore.default <- function(df = NULL, y, F, Q, w = 1, K,
-                      kappa = 1, alpha = 1,
-                      g = "x",
-                      dg = NA,
-                      eps_K = .01,
-                      eps_lam = 1e-5,
-                      against_oracle = TRUE) {
+alloscore.default <- function(df = NULL, K, target_names = NA,
+                              y, F, Q, w = 1,
+                              kappa = 1,
+                              alpha = 1,
+                              g = "x",
+                              dg = NA,
+                              eps_K = .01,
+                              eps_lam = 1e-5,
+                              against_oracle = TRUE) {
+
   # allocate will handle validation and attribute assignments
   if (!is.null(df)) {
     get_args_from_df(df)
   }
   allocate(
+    target_names = target_names,
     F = F,
     Q = Q,
     w = w,
@@ -296,33 +305,40 @@ alloscore.default <- function(df = NULL, y, F, Q, w = 1, K,
 #' @examples
 alloscore.allocated <- function(df, y, against_oracle = TRUE) {
   stopifnot(length(y) == length(df$x[[1]]))
-  gpl_list <- attr(df, "gpl_df")$gpl_loss_fun
+  gpl_list <- attr(df, "gpl_df")$gpl_loss_fun # would a join inside the map below be safer?
   scored_df <- df %>% mutate(
-    components_raw = map(x, function(x) {
-      pmap_dbl(list(gpl_list, x, y), function(gpl, x, y) {gpl(x,y)})
-      }),
-    score_raw = map_dbl(components_raw, sum)
+    xdf = map(xdf, function(xdf) {
+      xdf %>% mutate(
+        y = y,
+        gpl = gpl_list,
+        components_raw = pmap_dbl(list(gpl, x, y), function(gpl, x, y) {gpl(x,y)})
+        ) %>% select(-gpl)
+    }),
+    score_raw = map_dbl(xdf, ~sum(dplyr::pull(.,components_raw)))
   )
 
   if (against_oracle) {
+    # move this code to oracle_alloscore?
     oracle_scores <- attr(df, "gpl_df") %>%
-      select(g, kappa, alpha) %>%
+      select(target_names, g, kappa, alpha) %>%
       mutate(kappa = alpha,
              alpha = 1) %>%
       oracle_allocate(y = y,
                       w = attr(df, "w"),
                       K = df$K) %>%
       alloscore(y = y, against_oracle = FALSE) %>%
-      rename(components_oracle = components_raw, score_oracle = score_raw)
+      mutate(xdf = map(xdf, ~rename(., oracle = x, components_oracle = components_raw))) %>%
+      rename(xdf_oracle = xdf, score_oracle = score_raw)
     scored_df <-
       dplyr::left_join(
         scored_df,
-        oracle_scores[, c("K", "components_oracle", "score_oracle")], by = "K") %>%
+        oracle_scores %>% select(K, xdf_oracle, score_oracle), by = "K") %>%
       mutate(
-        components = map2(components_raw, components_oracle,
-                          function(components_raw, components_oracle) {
-                            components_raw - components_oracle
-                          }),
+        xdf = map2(xdf, xdf_oracle, function(xdf, xdf_oracle) {
+          bind_cols(xdf, xdf_oracle %>% select(oracle, components_oracle)) %>%
+            mutate(components = components_raw - components_oracle) %>%
+            relocate(oracle, .after = y)
+        }),
         score = score_raw - score_oracle
       )
   }
@@ -354,7 +370,6 @@ oracle_allocate <- function(df = NULL, y, K, ...) {
 #' @inheritParams alloscore
 #'
 #' @return see `alloscore`
-#' @export
 #'
 #' @examples
 oracle_alloscore <- function(df = NULL, y, K,

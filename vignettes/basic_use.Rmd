@@ -1,0 +1,94 @@
+---
+title: "Basic Features"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Basic Features}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>"
+)
+```
+
+```{r setup}
+library(alloscore)
+library(dplyr)
+library(ggplot2)
+library(tibble)
+```
+
+This vignette runs through some of the new functionality added in this version of `alloscore`.
+
+We start with an exponential data generating process across $N$ targets and use the convenience function `add_pdqr_funs` to construct a log-normal forecaster that tries to match the exponential mean. Only cdfs ("p") and quantile functions ("q") need to be added for `alloscore` to operate but I'll add densities too for plotting.
+```{r}
+N <- 10
+y_mean <- 50
+y_gen <- function() rexp(N, rate = 1/y_mean)
+
+m_lnorm <- tibble(
+  target_names = LETTERS[1:N],
+	dist = "lnorm",
+	sdlog = 1 + rpois(10, 8),
+  meanlog = log(y_mean) - .5*sdlog,
+) %>% add_pdqr_funs(types = c("p", "d", "q"))
+
+y <- y_gen()
+```
+
+We can nore score in one step, returning a data frame of list columns containing the score, the components of the score, the allocations, and information about the optimization proceedure.
+```{r}
+a1 <- alloscore(df = m_lnorm, y = y, K = 60)
+a1$components
+a1$xdf[[1]]
+```
+or via pipes with the necessary parameters added at each step:
+```{r}
+a1_piped <- m_lnorm %>% allocate(K = 60) %>% alloscore(y = y)
+a1_piped$xdf[[1]]
+```
+
+
+```{r}
+m_lnorm %>% allocate(K = 100) -> a1
+m_lnorm %>% alloscore(y = y, K = 100)->o1
+
+o1 <- m_lnorm %>% oracle_alloscore(y=y,K=6)
+a1 <- m_lnorm %>% allocate(K = .2)
+a1 <- m_lnorm %>% allocate(K = 10:15)
+attr(a1, "gpl_df")
+as1 <- m_lnorm %>% allocate(K = 10:15) %>% alloscore(y = y)
+as2 <- alloscore(df = m_lnorm, K = 10:15, y = y)
+as3 <- alloscore(F = m_lnorm$F, Q = m_lnorm$Q, K = 10:15, y = y)
+cbind(
+  as1$score,
+  as2$score,
+  as3$score
+)
+
+oa <- oracle_allocate(m_lnorm, y = y, K = 10:15)
+oa1 <- oracle_allocate(y = y, K = 10:15)
+oa1 <- oracle_allocate(y = y, K = 10, g = "log(1+x)")
+
+Ks <- seq(10,20, length.out=50)
+
+{
+start.time <- Sys.time()
+allocate(df = m_lnorm, K = Ks, eps_K = .0001)
+end.time <- Sys.time()
+print(end.time-start.time)
+}
+
+{
+start.time <- Sys.time()
+for (Kind in Ks) {
+  allocate(df = m_lnorm, K = Kind, eps_K = .0001)
+}
+end.time <- Sys.time()
+print(end.time-start.time)
+}
+```
+
