@@ -45,7 +45,7 @@ NULL
 #' @examples
 allocate <- function(df = NULL, K,
                      target_names = NA,
-                     F, Q, w = 1,
+                     F = NULL, Q = NULL, w = 1,
                      kappa = 1, alpha = 1,
                      g = "x", dg = NA,
                      eps_lam = 1e-4,
@@ -57,7 +57,7 @@ allocate <- function(df = NULL, K,
     target_col_name <- NULL
   }
   if (!is.null(df)) {
-    get_args_from_df(df)
+    get_args_from_df(df, args = c("target_names", "F", "Q", "w", "kappa", "alpha", "g", "dg"))
     N <- nrow(df)
   } else {
     N <- length(F)
@@ -99,19 +99,14 @@ allocate <- function(df = NULL, K,
   # remove rows where quantiles satisfy constraint
   out <- Kdf %>% dplyr::filter(qs_OK) %>% mutate(converged = TRUE)
   Kdf <- Kdf %>% dplyr::filter(!qs_OK)
-  # return if there are no other rows
-  if (nrow(Kdf) == 0) {
-    return(out)
-  }
-  # create counter for labeling iterates
-  tau <- 1
   # return x = 0 if there is no marginal benefit to allocating more than 0 in any component
-  if (Kdf$lamU[1] <= 0) {
+  if ((nrow(Kdf) > 0 )&& (Kdf$lamU[1] <= 0)) {
     Kdf$x <- list(rep(0, N))
     out <- rbind(out, Kdf) %>% arrange(K) # would out ever be non-empty here?
     return(out)
   }
-
+  # create counter for labeling iterates
+  tau <- 1
   while (nrow(Kdf) > 0) {
     Kdf <- Kdf %>% mutate(
       # calculate next lambdas
@@ -263,7 +258,7 @@ alloscore <- function(df = NULL, ...) {
 #' @rdname alloscore
 #' @export
 alloscore.default <- function(df = NULL, K, target_names = NA,
-                              y, F, Q, w = 1,
+                              y, F = NULL, Q = NULL, w = 1,
                               kappa = 1,
                               alpha = 1,
                               g = "x",
@@ -273,10 +268,11 @@ alloscore.default <- function(df = NULL, K, target_names = NA,
                               against_oracle = TRUE) {
 
   # allocate will handle validation and attribute assignments
-  if (!is.null(df)) {
-    get_args_from_df(df)
-  }
+  # if (!is.null(df)) {
+  #   get_args_from_df(df)
+  # }
   allocate(
+    df = df,
     target_names = target_names,
     F = F,
     Q = Q,
@@ -315,17 +311,18 @@ alloscore.allocated <- function(df, y, against_oracle = TRUE) {
         ) %>% select(-gpl)
     }),
     score_raw = map_dbl(xdf, ~sum(dplyr::pull(.,components_raw)))
-  )
+  ) %>% relocate(score_raw, .after = K)
 
   if (against_oracle) {
     # move this code to oracle_alloscore?
     oracle_scores <- attr(df, "gpl_df") %>%
-      select(target_names, g, kappa, alpha) %>%
+      select(attr(df, "target_col_name"), g, kappa, alpha) %>%
       mutate(kappa = alpha,
              alpha = 1) %>%
       oracle_allocate(y = y,
                       w = attr(df, "w"),
-                      K = df$K) %>%
+                      K = df$K,
+                      target_names = attr(df, "target_col_name")) %>%
       alloscore(y = y, against_oracle = FALSE) %>%
       mutate(xdf = map(xdf, ~rename(., oracle = x, components_oracle = components_raw))) %>%
       rename(xdf_oracle = xdf, score_oracle = score_raw)
@@ -340,8 +337,9 @@ alloscore.allocated <- function(df, y, against_oracle = TRUE) {
             relocate(oracle, .after = y)
         }),
         score = score_raw - score_oracle
-      )
+      ) %>% relocate(score, .after = K) %>% relocate(score_oracle, .after = score_raw)
   }
+
   return(scored_df)
 }
 

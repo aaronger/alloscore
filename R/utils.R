@@ -136,27 +136,32 @@ stdize_met_params <- function(C, L) {
 }
 
 #' Utility function to make data frames of forecasts easier to work with;
-#' works via side-effects of `assign`
-get_args_from_df <- function(df) {
+#' works via side-effects of `assign`.
+#' Note that we need the "empty" arguments to actually have NULL or NA defaults since
+#' leaving them actually empty seems to create un-inspectable promises when the call stack
+#' goes beyond just the caller of this function.
+#' @param df data frame with columns we might want caller to assign to its arguments
+#' @param args character list of arguments we want df to potentially provide
+get_args_from_df <- function(df, args) {
   e <- rlang::caller_env()
-  all_args <- formals(rlang::caller_fn())
-  all_arg_names <- names(all_args)
-  # overwrite the defaults of arguments if they are supplied by df
-  args_with_defaults <- purrr::discard(all_args, is_missing)
-  replacements <- intersect(names(args_with_defaults), names(df))
+  # get arguments that have non-NULL defaults
+  has_default_in_caller <- names(purrr::discard(formals(rlang::caller_fn()), is.null))
+  has_default <- intersect(has_default_in_caller, args)
+  # overwrite if they are supplied by df
+  replacements <- intersect(has_default, names(df))
   for (name in replacements) {
     assign(name, df[[name]], envir = e)
   }
-  # supply missing args from df
-  empty_objects <- purrr::keep(as.list(e), is_missing)
-  empty_arg_names <- intersect(names(empty_objects), all_arg_names)
+  # supply arguments from df when the default is NULL
+  empty_objects <- purrr::keep(as.list(e), ~(length(.) < 2 && (is.null(.) || is.na(.))))
+  empty_arg_names <- intersect(names(empty_objects), args)
   supplied_by_df <- intersect(empty_arg_names, names(df))
   for (name in supplied_by_df) {
     assign(name, df[[name]], envir = e)
   }
-  # if value of arg is a string matching the name of a column of df,
+  # if value of arg is a string specifying a column of df,
   # assign that column to arg
-  for (name in setdiff(all_arg_names, empty_arg_names)) {
+  for (name in setdiff(args, empty_arg_names)) {
     arg_val <- e[[name]]
     if (is.character(arg_val) && (length(arg_val) == 1) && (arg_val %in% names(df))) {
       assign(name, df[[arg_val]], envir = e)

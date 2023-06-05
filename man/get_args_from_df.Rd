@@ -3,11 +3,22 @@
 \name{get_args_from_df}
 \alias{get_args_from_df}
 \title{Utility function to make data frames of forecasts easier to work with;
-works via side-effects of \code{assign}}
+works via side-effects of \code{assign}.
+Note that we need the "empty" arguments to actually have NULL or NA defaults since
+leaving them actually empty seems to create un-inspectable promises when the call stack
+goes beyond just the caller of this function.}
 \usage{
-get_args_from_df(df)
+get_args_from_df(df, args)
+}
+\arguments{
+\item{df}{data frame with columns we might want caller to assign to its arguments}
+
+\item{args}{character list of arguments we want df to potentially provide}
 }
 \description{
 Utility function to make data frames of forecasts easier to work with;
-works via side-effects of \code{assign}
+works via side-effects of \code{assign}.
+Note that we need the "empty" arguments to actually have NULL or NA defaults since
+leaving them actually empty seems to create un-inspectable promises when the call stack
+goes beyond just the caller of this function.
 }
