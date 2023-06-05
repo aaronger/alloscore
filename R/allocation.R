@@ -310,8 +310,9 @@ alloscore.allocated <- function(df, y, against_oracle = TRUE) {
         components_raw = pmap_dbl(list(gpl, x, y), function(gpl, x, y) {gpl(x,y)})
         ) %>% select(-gpl)
     }),
-    score_raw = map_dbl(xdf, ~sum(dplyr::pull(.,components_raw)))
-  ) %>% relocate(score_raw, .after = K)
+    ytot = map_dbl(xdf, ~sum(attr(df, "w") * dplyr::pull(., y))),
+    score_raw = map_dbl(xdf, ~sum(dplyr::pull(., components_raw)))
+  ) %>% relocate(score_raw, ytot, .after = K)
 
   if (against_oracle) {
     # move this code to oracle_alloscore?
