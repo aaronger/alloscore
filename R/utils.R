@@ -161,12 +161,16 @@ get_args_from_df <- function(df, args) {
   }
   # if value of arg is a string specifying a column of df,
   # assign that column to arg
+  string_args <- c()
   for (name in setdiff(args, empty_arg_names)) {
     arg_val <- e[[name]]
     if (is.character(arg_val) && (length(arg_val) == 1) && (arg_val %in% names(df))) {
       assign(name, df[[arg_val]], envir = e)
+      string_args <- c(name, string_args)
     }
   }
+  # make apparent to caller what came from df
+  assign("args_from_df", c(replacements, supplied_by_df, string_args), envir = e)
 }
 
 #' Get a function of x from a string, e.g., "log(x)"

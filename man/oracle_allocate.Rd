@@ -4,14 +4,17 @@
 \alias{oracle_allocate}
 \title{Allocate according to an oracle's knowledge of outcome y}
 \usage{
-oracle_allocate(df = NULL, y, K, ...)
+oracle_allocate(gpl_df, y, K, w, ...)
 }
 \arguments{
-\item{df}{data frame containing columns for other list arguments which are used when
-those arguments (e.g. \code{F}) are left empty or give the name of a column of df,
-e.g., \code{F = "cdf"}}
+\item{gpl_df}{a \code{gpl_df} object}
+
+\item{y}{observed outcomes}
 
 \item{K}{vector of constraints on total provision (cannot be supplied via df)}
+
+\item{w}{numeric vector with cost per unit resource allocated to each
+coordinate}
 }
 \value{
 see \code{allocate}

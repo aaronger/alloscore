@@ -22,6 +22,8 @@ library(alloscore)
 library(dplyr)
 library(ggplot2)
 library(tibble)
+library(purrr)
+library(rlang)
 ```
 
 This vignette runs through some of the new functionality added in this version of `alloscore`.
@@ -47,13 +49,15 @@ y <- y_gen()
 
 We can now score for an array of Ks in one step, returning a data frame of list columns containing the score, the components of the score, the allocations, and information about the optimization proceedure for each K...
 ```{r}
-a1 <- alloscore(df = m_lnorm, y = y, K = 60:70)
-a1$xdf[[2]] # allocations for K = 61
-a1 %>% select(K, score) # scores for K in 60:70
+Ks <- 60:70
+a1 <- alloscore(df = m_lnorm, y = y, K = Ks)
+a1$xdf[[2]] # allocations 
+a1 %>% select(K, score)
 ```
 or via pipes with the necessary parameters added at each step:
 ```{r}
-a1_piped <- m_lnorm %>% allocate(K = 60:70) %>% alloscore(y = y)
+a1_allocated <- m_lnorm %>% allocate(K = Ks)
+a1_piped <- a1_allocated %>% alloscore(y = y)
 a1_piped %>% select(K, score)
 ```
 
@@ -80,11 +84,12 @@ iters9 %>% rename(`0` = qs) %>%
   geom_line() + geom_point() + theme_classic()
 ```
 
-The generalize piecwise lnear loss functions used for each target and the parameters used to construct them are stored in an attribute:
+The weights for each target and the eneralized piecewise linear loss functions used for each target and the parameters used to construct them are stored in attributes with getter methods `weights` and `gpl`:
 ```{r}
-attr(a1, "gpl_df")
+weights(a1)
+gpl(a1)
 ```
-$O$ and $U$ are mostly still just placeholders since I haven't yet adapted `allocate` to accept them, but this should be simple.
+$O$ and $U$ are mostly still just placeholders since I haven't yet adapted `allocate` to accept them, but this should be simple. I keep weights separate from the gpl data since they are only involved in optimization, not scoring.
 
 
 Also, `alloscore` (and `allocate`) can take the forecast (and gpl) info as individual arguments:
@@ -98,6 +103,31 @@ full_join(
   as_df %>% select(K, score), 
   by = "K"
 )
+```
+
+For experiments with large `y` samples, scoring as above gets slow and seems like it could create memory shortages, so I added an `alloscore` method for "slim" data frames that avoids copying many gpl function list-columns
+```{r, cache=TRUE}
+Ks <- seq(10, 1500, by = 10)
+a1_allocated <- m_lnorm %>% allocate(K = Ks)
+a1_slim <- make_slim(a1_allocated)
+ys <- map(1:50, ~y_gen() %>% set_names(m_lnorm$target_names))
+a1_slim_scored <- alloscore(a1_slim, ys)
+head(a1_slim_scored)
+```
+
+This can then be unnested for plotting:
+```{r}
+a1_scores <- a1_slim_scored %>% select(-xdf) %>% tidyr::unnest(scores)
+head(a1_scores, n = 13)
+ytot <- ys %>% map_dbl(sum)
+
+n <- length(ytot)
+dens <- density(ytot, n = n)
+
+# Make a data frame with the density estimate
+density_data <- data.frame(x = dens$x, y = dens$y * 100000)
+p <- a1_scores %>% ggplot() + geom_line(aes(x = K, y = score, group = samp), alpha = .1)
+  p + geom_line(data = density_data, aes(x = x, y = y), color = "red") + theme_bw()
 ```
 
 

@@ -52,6 +52,8 @@ allocate <- function(df = NULL, K,
                      eps_K = .01,
                      point_mass_window = .001) {
   if (is.character(target_names) && (length(target_names) == 1)) {
+    # if target_names is a single string meant to identify a column in df,
+    # store this column name
     target_col_name <- target_names
   } else {
     target_col_name <- NULL
@@ -61,6 +63,18 @@ allocate <- function(df = NULL, K,
     N <- nrow(df)
   } else {
     N <- length(F)
+  }
+  # if target_names still not provided, name targets with numbers
+  if ((length(target_names) == 1) && (is.na(target_names))) {
+    target_names <- as.character(1:N)
+  }
+  # name the target weights
+  if (length(w) == 1) {
+    w <- rep(w, N) %>% set_names(target_names)
+  } else if (length(w) == N) {
+    w <- w %>% set_names(target_names)
+  } else {
+    stop("w wrong length")
   }
   gpl <- new_gpl_df(N = N, target_names = target_names, g = g, kappa = kappa, alpha = alpha)
   if (!is.null(target_col_name)) {
@@ -218,14 +232,72 @@ allocate <- function(df = NULL, K,
                }
       return(x)
     }))
-  out <- out %>% select(-c(converged, lam_prev)) %>% arrange(K) %>%
-    mutate(xdf = map(x, ~tibble::enframe(., name = target_col_name, value = "x")))
+  # organize
+  out <- out %>% select(-c(converged, lam_prev)) %>% arrange(K)
+  # create a scorable data frame for each K
+  out <- out %>% mutate(xdf = map(x, function(x) {
+    tibble::enframe(x, name = target_col_name, value = "x") %>%
+      dplyr::left_join(gpl[, c(target_col_name, "gpl_loss_fun")], by = target_col_name) %>%
+      mutate(score_fun = map2(x, gpl_loss_fun, function(x, gpl_loss_fun) {
+        function(y) {gpl_loss_fun(x, y)}
+      })) %>% select(-gpl_loss_fun)
+  }))
   return(structure(
     out,
     class = c("allocated", class(out)),
     gpl_df = gpl,
     w = w,
     target_col_name = target_col_name))
+}
+
+#' Get the `gpl_df` attribute of an allocated data frame which containes gpl loss functions
+#' for each target and the parameters used to form them.
+#'
+#' @param adf an allocated data frame
+#'
+#' @return data frame
+#' @export
+#'
+#' @examples
+gpl <- function(adf) {
+  if (!inherits(adf, "allocated")) {
+    stop("Input must be of class 'allocated'")
+  }
+  attr(adf, "gpl_df")
+}
+
+#' Get the weights of an allocated data frame
+#'
+#' @param adf an allocated data frame
+#'
+#' @return
+#' @export
+#'
+#' @examples
+weights.allocated <- function(adf) {
+  attr(adf, "w")
+}
+
+#' Make a slim allocated data frame with columns only for K, target_name, `x`,
+#'  and optionally scoring functions with `x` inserted to give functions of observed `y`.
+#'
+#' @param adf an allocated data frame
+#' @param keep_score_fun
+#'
+#' @return
+#' @export
+#'
+#' @examples
+make_slim <- function(adf, keep_score_fun = TRUE)  {
+  stopifnot("allocated" %in% class(adf))
+  out <- adf %>% select(K, xdf) %>% tidyr::unnest(xdf)
+  class(out) = c("allocated_slim", class(adf))
+  return(structure(
+    out,
+    gpl_df = attr(adf, "gpl_df"),
+    w = attr(adf, "w"),
+    target_col_name = attr(adf, "target_col_name")
+  ))
 }
 
 #' Score the allocations from set of forecasts against realized outcomes `y`.
@@ -301,14 +373,12 @@ alloscore.default <- function(df = NULL, K, target_names = NA,
 #' @examples
 alloscore.allocated <- function(df, y, against_oracle = TRUE) {
   stopifnot(length(y) == length(df$x[[1]]))
-  gpl_list <- attr(df, "gpl_df")$gpl_loss_fun # would a join inside the map below be safer?
   scored_df <- df %>% mutate(
-    xdf = map(xdf, function(xdf) {
-      xdf %>% mutate(
+    xdf = map(xdf, function(.xdf) {
+      .xdf %>% mutate(
         y = y,
-        gpl = gpl_list,
-        components_raw = pmap_dbl(list(gpl, x, y), function(gpl, x, y) {gpl(x,y)})
-        ) %>% select(-gpl)
+        components_raw = map2_dbl(score_fun, y, function(.score_fun, .y) {.score_fun(.y)})
+        )
     }),
     ytot = map_dbl(xdf, ~sum(attr(df, "w") * dplyr::pull(., y))),
     score_raw = map_dbl(xdf, ~sum(dplyr::pull(., components_raw)))
@@ -316,10 +386,7 @@ alloscore.allocated <- function(df, y, against_oracle = TRUE) {
 
   if (against_oracle) {
     # move this code to oracle_alloscore?
-    oracle_scores <- attr(df, "gpl_df") %>%
-      select(attr(df, "target_col_name"), g, kappa, alpha) %>%
-      mutate(kappa = alpha,
-             alpha = 1) %>%
+    oracle_scores <- gpl(df) %>%
       oracle_allocate(y = y,
                       w = attr(df, "w"),
                       K = df$K,
@@ -344,23 +411,105 @@ alloscore.allocated <- function(df, y, against_oracle = TRUE) {
   return(scored_df)
 }
 
+#' Score a slim allocated data frame
+#'
+#' @param slim_df
+#' @param ys a list of named outcome vectors with names matching target names in slim_df
+#'
+#' @return a tibble with columns `xdf` and `scores` containing the components and scores for
+#'  each sample in `ys`
+#' @export
+#'
+#' @examples
+alloscore.allocated_slim <- function(slim_df, ys) {
+  stopifnot("allocated_slim" %in% class(slim_df))
+  target_col_name <- attr(slim_df, "target_col_name")
+  comp_base <- slim_df %>% select(K, target_col_name, x)
+  w <- weights(slim_df)
+  Ks <- unique(slim_df$K)
+  gpl_fns <- gpl(slim_df)$gpl_loss_fun
+  scores <- map(1:length(ys), function(i) {
+    y <- ys[[i]]
+    oracle_cols <- map_df(Ks, ~oracle_alloscore_direct(y, ., w, gpl_fns))
+    xdf <- bind_cols(comp_base, y = rep(y, length(Ks)), oracle_cols)
+    xdf$components_raw <- map2_dbl(
+      slim_df[[target_col_name]],
+      slim_df$score_fun,
+      function(nm, fn) {fn(y[nm])})
+    xdf$components <- xdf$components_raw - xdf$components_oracle
+    scores <- xdf %>% group_by(K) %>%
+      summarise(
+        ytot = sum(w * y),
+        score_raw = sum(components_raw),
+        score_oracle = sum(components_oracle),
+        score = sum(components))
+    return(list(xdf = xdf, scores = scores))
+  }, .progress = TRUE)
+  out <- tibble::as_tibble(purrr::transpose(scores)) %>%
+    rownames_to_column() %>% rename(samp = rowname)
+  return(out)
+}
+
 #' Allocate according to an oracle's knowledge of outcome y
 #'
-#' @param y
+#' @param gpl_df a `gpl_df` object
+#' @param y observed outcomes
 #' @inheritParams allocate
 #'
 #' @return see `allocate`
 #' @export
 #'
 #' @examples
-oracle_allocate <- function(df = NULL, y, K, ...) {
-  allocate(
-    df = df,
+oracle_allocate <- function(gpl_df, y, K, w, ...) {
+  # not dealing with target_name_col identification for now
+  gpl_df <- gpl_df %>% select(g:alpha) %>%
+    mutate(kappa = alpha, alpha = 1)
+  return(allocate(
+    df = gpl_df,
+    w = w,
     F = map(y, function(y) {function(x) {1*(x>=y)}}),
     Q = map(y, function(y) {function(p) {y}}),
     K = K,
-    ...
-  )
+    eps_lam = .01, # prevent likely unnecessary search steps
+    ...))
+}
+
+#' Directly find the oracle allocation with no data management.
+#' Assumes for now that all targets have same gpl parameters and
+#' (probably?) that `g = x`
+#'
+#' @param y
+#' @param K
+#' @param w
+#'
+#' @return
+#' @export
+#'
+#' @examples
+oracle_allocate_direct <- function(y, K, w) {
+  if (sum(w * y) <= K) {
+    return(y)
+  } else {
+    return(y * K / sum(w * y))
+  }
+}
+
+#' Directly find and score the oracle allocation with no data management.
+#'
+#' @param y
+#' @param K
+#' @param w
+#' @param gpl_fns
+#'
+#' @return
+#' @export
+#'
+#' @examples
+oracle_alloscore_direct <- function(y, K, w, gpl_fns) {
+  oracle <- oracle_allocate_direct(y, K, w)
+  components_oracle <- pmap_dbl(
+    list(gpl_fns, oracle, y), function(fn, o, y) {fn(o, y)})
+  return(tibble(oracle = oracle, components_oracle = components_oracle))
 }
 
 #' Score according to an oracle's knowledge of outcome y
