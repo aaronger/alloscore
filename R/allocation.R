@@ -98,7 +98,7 @@ allocate <- function(df = NULL, K,
   # as well as columns for the current lambda and previous lambda iterates
   Kdf <- tibble(
     K = K,
-    xs = list(gpl %>% select(target_col_name) %>% mutate(`qs` = qs)), # for iterations
+    xs = list(gpl %>% select(target_col_name) %>% mutate(`0` = qs)), # for iterations
     x = list(tibble::deframe(xs[[1]])), # for final allocation
     qs_OK = map(x, ~sum(w*.)) < K,
     converged = FALSE,
@@ -109,15 +109,25 @@ allocate <- function(df = NULL, K,
     lam = 0,
     lam_seq = list(0),
     lam_prev = 0
-  ) %>% arrange(K)
+  ) %>% dplyr::arrange(K)
   # remove rows where quantiles satisfy constraint
   out <- Kdf %>% dplyr::filter(qs_OK) %>% mutate(converged = TRUE)
   Kdf <- Kdf %>% dplyr::filter(!qs_OK)
   # return x = 0 if there is no marginal benefit to allocating more than 0 in any component
-  if ((nrow(Kdf) > 0 )&& (Kdf$lamU[1] <= 0)) {
+  if ((nrow(Kdf) > 0 ) && (Kdf$lamU[1] <= 0)) {
     Kdf$x <- list(rep(0, N))
     out <- rbind(out, Kdf) %>% arrange(K) # would out ever be non-empty here?
+    message("All targets receiving zero allocation")
     return(out)
+  }
+  # Change initial allocation to less extreme overage
+  # Note: allocating an even distribution of K would seem natural
+  # but this appears to cause the lambda algorithm to often fail to
+  # achieve K utilization, triggering post-processing
+  if (nrow(Kdf) > 0) {
+    Kdf <- Kdf %>% mutate(xs = map2(K, xs, function(.K, .xs)
+      mutate(.xs, `0` = .K / (N / 2))),
+      x = list(tibble::deframe(xs[[1]])))
   }
   # create counter for labeling iterates
   tau <- 1
@@ -278,20 +288,42 @@ weights.allocated <- function(adf) {
   attr(adf, "w")
 }
 
-#' Make a slim allocated data frame with columns only for K, target_name, `x`,
-#'  and optionally scoring functions with `x` inserted to give functions of observed `y`.
+#' Make an allocated data frame slim, i.e., containing
+#' columns only for scores and optionally a list column or unnested
+#' columns for the `xdf` component data frames of the allocation
 #'
 #' @param adf an allocated data frame
-#' @param keep_score_fun
+#' @param xdf_action character indicating whether to unnest `xdf`.
+#' Default is to unnest when data from is scored and leave nested
+#' when data frame is scored.
+#' @param id_cols columns to also keep such as model name and origin time
 #'
 #' @return
 #' @export
 #'
 #' @examples
-make_slim <- function(adf, keep_score_fun = TRUE)  {
-  stopifnot("allocated" %in% class(adf))
-  out <- adf %>% select(K, xdf) %>% tidyr::unnest(xdf)
-  class(out) = c("allocated_slim", class(adf))
+slim <- function(
+    adf,
+    xdf_action = c("default", "unnest", "nest"),
+    id_cols = NULL)  {
+  # stopifnot("allocated" %in% class(adf))
+  id_cols <- c(id_cols, "K", "xdf")
+  xdf_action <- match.arg(xdf_action)
+  if ("scored" %in% class(adf)) {
+    out <- adf %>%
+      select(tidyselect::any_of(c(
+        "score_raw", "score_oracle", "score", id_cols
+      )))
+    if (xdf_action == "unnest") {
+      out <- out %>% tidyr::unnest(xdf)
+    }
+  } else {
+    out <- adf %>% select(tidyselect::any_of(id_cols))
+    if (xdf_action != "nest") {
+      out <- out %>% tidyr::unnest(xdf)
+    }
+  }
+  class(out) = c("slim", class(adf))
   return(structure(
     out,
     gpl_df = attr(adf, "gpl_df"),
@@ -305,7 +337,7 @@ make_slim <- function(adf, keep_score_fun = TRUE)  {
 #' @param df data frame containing columns for other list arguments which are used only when
 #'  those arguments (e.g. `F`) are not passed directly
 #'
-#' @return a date frame of the form returned by `allocate` with additional columns for
+#' @return a data frame of the form returned by `allocate` with additional columns for
 #' \itemize{
 #'   \item `components_raw`: the raw gpl losses in each location
 #'   \item `score_raw`: the sum of the raw components
@@ -326,6 +358,7 @@ alloscore <- function(df = NULL, ...) {
 #' @param y numeric observed data value
 #' @param against_oracle logical; if `TRUE`, components and scores relative to oracle are
 #'  included
+#' @param slim logical; if TRUE use slim data frames
 #' @inheritParams allocate
 #' @rdname alloscore
 #' @export
@@ -337,13 +370,14 @@ alloscore.default <- function(df = NULL, K, target_names = NA,
                               dg = NA,
                               eps_K = .01,
                               eps_lam = 1e-4,
-                              against_oracle = TRUE) {
+                              against_oracle = TRUE,
+                              slim = FALSE) {
 
   # allocate will handle validation and attribute assignments
   # if (!is.null(df)) {
   #   get_args_from_df(df)
   # }
-  allocate(
+  a <- allocate(
     df = df,
     target_names = target_names,
     F = F,
@@ -356,8 +390,12 @@ alloscore.default <- function(df = NULL, K, target_names = NA,
     dg = dg,
     eps_K = eps_K,
     eps_lam = eps_lam
-  ) %>%
-    alloscore(y = y, against_oracle = against_oracle) # uses allocated method
+  )
+
+  if (slim) {a <- slim(a)}
+
+  return(alloscore(a, y = y, against_oracle = against_oracle))
+  # uses allocated or slim method
 }
 
 #' Allocation scoring method for forecasts with computed allocations and gpl loss functions.
@@ -407,7 +445,7 @@ alloscore.allocated <- function(df, y, against_oracle = TRUE) {
         score = score_raw - score_oracle
       ) %>% relocate(score, .after = K) %>% relocate(score_oracle, .after = score_raw)
   }
-
+  class(scored_df) <- c("scored", class(scored_df))
   return(scored_df)
 }
 
@@ -421,8 +459,12 @@ alloscore.allocated <- function(df, y, against_oracle = TRUE) {
 #' @export
 #'
 #' @examples
-alloscore.allocated_slim <- function(slim_df, ys) {
-  stopifnot("allocated_slim" %in% class(slim_df))
+alloscore.slim <- function(slim_df, ys, against_oracle) {
+  stopifnot("allocated" %in% class(slim_df))
+  if (!is.list(ys)) {ys <- list(ys)}
+  if (!all(purrr::map_lgl(ys, ~ !is.null(names(.)) & identical(names(ys[[1]]), names(.))))) {
+    stop("ys need to be consistently named by their targets")
+  }
   target_col_name <- attr(slim_df, "target_col_name")
   comp_base <- slim_df %>% select(K, target_col_name, x)
   w <- weights(slim_df)

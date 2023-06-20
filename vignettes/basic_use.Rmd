@@ -3,8 +3,10 @@ title: "Basic Features"
 output: rmarkdown::html_vignette
 vignette: >
   %\VignetteIndexEntry{Basic Features}
-  %\VignetteEngine{knitr::rmarkdown}
   %\VignetteEncoding{UTF-8}
+  %\VignetteEngine{knitr::rmarkdown}
+editor_options: 
+  chunk_output_type: console
 ---
 
 ```{r, include = FALSE}
@@ -19,10 +21,7 @@ knitr::opts_chunk$set(
 
 ```{r setup}
 library(alloscore)
-library(dplyr)
-library(ggplot2)
-library(tibble)
-library(purrr)
+library(tidyverse)
 library(rlang)
 ```
 
@@ -34,29 +33,39 @@ N <- 10
 y_mean <- 50
 y_gen <- function(Ny=N) rexp(Ny, rate = 1/y_mean)
 
-make_m_lnorm <- function(N) {
+make_m_lnorm <- function(N, sd_param, mean_param) {
 tibble(
   target_names = LETTERS[1:N],
 	dist = "lnorm",
-	sdlog = 1 + rpois(N, 8),
-  meanlog = log(y_mean) - .5*sdlog,
+	sdlog = sd_param,
+  meanlog = log(mean_param) - .5*sdlog,
 ) %>% add_pdqr_funs(types = c("p", "d", "q"))
 }
 
-m_lnorm <- make_m_lnorm(N)
+m_lnorm1 <- make_m_lnorm(N, 1, y_mean + 15*(1:N))
+m_lnorm2 <- make_m_lnorm(N, (1:N)/(N/2), y_mean) 
 y <- y_gen()
+
+ggplot() + 
+  map(m_lnorm1$f, ~geom_function(fun = ., n = 1000, color = "red")) + 
+  map(m_lnorm2$f, ~geom_function(fun = ., n = 1000, color = "blue")) +
+  geom_function(fun = function(x) dexp(x, rate = 1/y_mean), n = 1000, linewidth = 1) +
+  lims(x=c(0,100))
 ```
 
 We can now score for an array of Ks in one step, returning a data frame of list columns containing the score, the components of the score, the allocations, and information about the optimization proceedure for each K...
 ```{r}
-Ks <- 60:70
-a1 <- alloscore(df = m_lnorm, y = y, K = Ks)
+Ks <- seq(200, 400, by = 10)
+a1 <- alloscore(df = m_lnorm1, y = y, K = Ks)
+a2 <- alloscore(df = m_lnorm2, y = y, K = Ks)
 a1$xdf[[2]] # allocations 
+a2$xdf[[2]] # allocations 
 a1 %>% select(K, score)
 ```
 or via pipes with the necessary parameters added at each step:
 ```{r}
-a1_allocated <- m_lnorm %>% allocate(K = Ks)
+a1_allocated <- m_lnorm1 %>% allocate(K = Ks)
+a2_allocated <- m_lnorm2 %>% allocate(K = Ks)
 a1_piped <- a1_allocated %>% alloscore(y = y)
 a1_piped %>% select(K, score)
 ```
@@ -72,7 +81,7 @@ The `xs` column contains data frames for each K recording the iteration history 
 
 
 ```{r}
-iters9 %>% rename(`0` = qs) %>% 
+iters9 %>%  
   tidyr::pivot_longer(
     cols = -c(target_names), 
     names_to = "iteration", 
@@ -84,7 +93,7 @@ iters9 %>% rename(`0` = qs) %>%
   geom_line() + geom_point() + theme_classic()
 ```
 
-The weights for each target and the eneralized piecewise linear loss functions used for each target and the parameters used to construct them are stored in attributes with getter methods `weights` and `gpl`:
+The weights for each target and the generalized piecewise linear loss functions used for each target and the parameters used to construct them are stored in attributes with getter methods `weights` and `gpl`:
 ```{r}
 weights(a1)
 gpl(a1)
@@ -95,8 +104,8 @@ $O$ and $U$ are mostly still just placeholders since I haven't yet adapted `allo
 Also, `alloscore` (and `allocate`) can take the forecast (and gpl) info as individual arguments:
 ```{r}
 K <- c(10, 20, 30)
-as_indiv <- alloscore(F = m_lnorm$F, Q = m_lnorm$Q, K = K, y = y)
-as_df <- m_lnorm %>% allocate(K = K) %>% alloscore(y = y)
+as_indiv <- alloscore(F = m_lnorm1$F, Q = m_lnorm1$Q, K = K, y = y)
+as_df <- m_lnorm1 %>% allocate(K = K) %>% alloscore(y = y)
 
 full_join(
   as_indiv %>% select(K, score), 
@@ -104,13 +113,51 @@ full_join(
   by = "K"
 )
 ```
+## Working with multiple models and targets
+
+```{r}
+times = 1:3
+N = 4 # number of targets
+y_series <- tibble(
+  origin_time = times,  # targets could be temporal
+  ys = map(seq_along(origin_time), ~y_gen()))
+m1_series <- tibble(
+  origin_time = times,
+  model = "m1", 
+  forecast = map(origin_time, ~make_m_lnorm(N, 1, y_mean + .*10))) %>% 
+  full_join(y_series, by = "origin_time")
+m2_series <- m1_series %>% mutate(
+  model = "m2",
+  forecast = map(times, ~make_m_lnorm(N, (1:N)/(N/2), y_mean + .*10))
+  )
+
+a_series <- bind_rows(m1_series, m2_series) %>% mutate(
+  alloc = map2(forecast, ys, ~alloscore(df = .x, y = .y, K = c(50,300)))
+)
+
+a_series_slim <- a_series %>% mutate(alloc = map(alloc, slim)) %>% 
+  unnest(alloc)
+a_series_slim
+
+plot_components(a_series_slim, K = 50)
+```
+
+
+
+## Monte Carlo stream-lining
 
 For experiments with large `y` samples, scoring as above gets slow and seems like it could create memory shortages, so I added an `alloscore` method for "slim" data frames that avoids copying many gpl function list-columns
+
+```{r}
+a1_slim <- alloscore(df = m_lnorm1, y = y_series, K = Ks, slim = TRUE)  
+```
+
+
 ```{r, cache=TRUE}
 Ks <- seq(10, 1500, by = 10)
-a1_allocated <- m_lnorm %>% allocate(K = Ks)
+a1_allocated <- m_lnorm1 %>% allocate(K = Ks)
 a1_slim <- make_slim(a1_allocated)
-ys <- map(1:50, ~y_gen() %>% set_names(m_lnorm$target_names))
+ys <- map(1:50, ~y_gen() %>% set_names(m_lnorm1$target_names))
 a1_slim_scored <- alloscore(a1_slim, ys)
 head(a1_slim_scored)
 ```
@@ -132,7 +179,7 @@ p <- a1_scores %>% ggplot() + geom_line(aes(x = K, y = score, group = samp), alp
 
 
 ```{r}
-oa <- oracle_allocate(m_lnorm, y = y, K = 10:15)
+oa <- oracle_allocate(m_lnorm1, y = y, K = 10:15)
 oa1 <- oracle_allocate(y = y, K = 10:15)
 oa1 <- oracle_allocate(y = y, K = 10, g = "log(1+x)")
 ```

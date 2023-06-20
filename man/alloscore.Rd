@@ -22,7 +22,8 @@ alloscore(df = NULL, ...)
   dg = NA,
   eps_K = 0.01,
   eps_lam = 1e-04,
-  against_oracle = TRUE
+  against_oracle = TRUE,
+  slim = FALSE
 )
 
 \method{alloscore}{allocated}(df, y, against_oracle = TRUE)
@@ -55,9 +56,11 @@ increment function \code{g} for each coordinate; defaults to 1 corresponding to 
 
 \item{against_oracle}{logical; if \code{TRUE}, components and scores relative to oracle are
 included}
+
+\item{slim}{logical; if TRUE use slim data frames}
 }
 \value{
-a date frame of the form returned by \code{allocate} with additional columns for
+a data frame of the form returned by \code{allocate} with additional columns for
 \itemize{
 \item \code{components_raw}: the raw gpl losses in each location
 \item \code{score_raw}: the sum of the raw components
