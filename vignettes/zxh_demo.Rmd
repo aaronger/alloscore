@@ -57,7 +57,7 @@ allo_norm_ex <- allocate(zxh_norm_ex_forecasts, w = "c", K = 2500, target_names 
 
 WitH `allocate`'s default convergence parameters `eps_lam = 1e-4` and `eps_K = .01` it took us 15 iterations to find our allocations, the last few of which maybe weren't necessary:
 ```{r}
-allo_norm_ex$xs[[1]] %>% rename(`0` = qs) %>% 
+allo_norm_ex$xs[[1]] %>% 
   tidyr::pivot_longer(
     cols = -Product, 
     names_to = "iteration", 
@@ -129,7 +129,7 @@ allo_beta_ex <- allocate(zxh_beta_ex_forecasts, w = "c", K = 6500, target_names 
 
 Plot iterations:
 ```{r}
-allo_beta_ex$xs[[1]] %>% rename(`0` = qs) %>% 
+allo_beta_ex$xs[[1]] %>% 
   tidyr::pivot_longer(
     cols = -Product, 
     names_to = "iteration", 

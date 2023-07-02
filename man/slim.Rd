@@ -6,7 +6,13 @@
 columns only for scores and optionally a list column or unnested
 columns for the \code{xdf} component data frames of the allocation}
 \usage{
-slim(adf, xdf_action = c("default", "unnest", "nest"), id_cols = NULL)
+slim(
+  adf,
+  xdf_action = c("default", "unnest", "nest"),
+  id_cols = NULL,
+  rm_score_fun_if_scored = TRUE,
+  rm_score_fun_if_not_scored = FALSE
+)
 }
 \arguments{
 \item{adf}{an allocated data frame}
@@ -16,6 +22,13 @@ Default is to unnest when data from is scored and leave nested
 when data frame is scored.}
 
 \item{id_cols}{columns to also keep such as model name and origin time}
+
+\item{rm_score_fun_if_scored}{remove the scoring function in the xdf list column of a scored
+data frames to save memory; defaults to TRUE since a scoring function is usually not needed for a
+scored data frame.}
+
+\item{rm_score_fun_if_not_scored}{defaults to FALSE since a scoring function can be used to
+score the data frame.}
 }
 \description{
 Make an allocated data frame slim, i.e., containing

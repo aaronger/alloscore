@@ -135,11 +135,23 @@ a_series <- bind_rows(m1_series, m2_series) %>% mutate(
   alloc = map2(forecast, ys, ~alloscore(df = .x, y = .y, K = c(50,300)))
 )
 
-a_series_slim <- a_series %>% mutate(alloc = map(alloc, slim)) %>% 
-  unnest(alloc)
+a_series_slim <- a_series %>% 
+  select(origin_time, model, alloc) %>% 
+  mutate(alloc = map(alloc, slim))
 a_series_slim
 
-plot_components(a_series_slim, K = 50)
+plot_components(a_series, K = 50, 
+                scored_col_name = "alloc", 
+                origin_time_col_name = "origin_time", 
+                model_col_name = "model")
+
+plot_components(a_series_slim, K = 50, 
+                scored_col_name = "alloc", 
+                origin_time_col_name = "origin_time", 
+                model_col_name = "model")
+
+# won't work
+# plot_components(a_series, K = 50)
 ```
 
 
@@ -156,7 +168,7 @@ a1_slim <- alloscore(df = m_lnorm1, y = y_series, K = Ks, slim = TRUE)
 ```{r, cache=TRUE}
 Ks <- seq(10, 1500, by = 10)
 a1_allocated <- m_lnorm1 %>% allocate(K = Ks)
-a1_slim <- make_slim(a1_allocated)
+a1_slim <- slim(a1_allocated)
 ys <- map(1:50, ~y_gen() %>% set_names(m_lnorm1$target_names))
 a1_slim_scored <- alloscore(a1_slim, ys)
 head(a1_slim_scored)

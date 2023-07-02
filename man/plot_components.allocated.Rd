@@ -9,7 +9,8 @@
   Ks = NULL,
   origin_time_col_name = NULL,
   model_col_name = NULL,
-  target_col_name = NULL
+  target_col_name = NULL,
+  show_oracle = TRUE
 )
 }
 \arguments{

@@ -1,6 +1,6 @@
 #' @importFrom purrr map map2 pmap map_dbl map2_dbl pmap_dbl map_int partial map_lgl pmap_lgl
 #' @importFrom rlang exec is_missing is_list is_function caller_env
-#' @importFrom dplyr mutate arrange
+#' @importFrom dplyr mutate arrange select filter
 #' @importFrom tibble tibble
 NULL
 
@@ -27,6 +27,7 @@ NULL
 #' @param eps_lam
 #' @param eps_K
 #' @param point_mass_window
+#'
 #'
 #' @return data frame with (list-)columns
 #' \describe{
@@ -86,7 +87,10 @@ allocate <- function(df = NULL, K,
   # initialize allocation at q_i if alpha_i < 1 or something big enough to
   # violate constraint if not
   qs <- map2_dbl(Q, alpha, exec)
-  qs[qs==Inf] <- (w^(-1)*rep(1,N)*2*max(K))[qs==Inf]
+  # Old initiation code that doesn't seem useful: the algorithm will go to medians
+  # on fist step whether Infs are there or not.
+  # qs[qs==Inf] <- (w^(-1)*rep(1,N)*2*max(K))[qs==Inf]
+
   # get marginal expected benefits
   Lambda <- meb_gpl_df(df = gpl, F = F, w = w)
   # store ther values at boundary
@@ -120,18 +124,10 @@ allocate <- function(df = NULL, K,
     message("All targets receiving zero allocation")
     return(out)
   }
-  # Change initial allocation to less extreme overage
-  # Note: allocating an even distribution of K would seem natural
-  # but this appears to cause the lambda algorithm to often fail to
-  # achieve K utilization, triggering post-processing
-  if (nrow(Kdf) > 0) {
-    Kdf <- Kdf %>% mutate(xs = map2(K, xs, function(.K, .xs)
-      mutate(.xs, `0` = .K / (N / 2))),
-      x = list(tibble::deframe(xs[[1]])))
-  }
   # create counter for labeling iterates
   tau <- 1
   while (nrow(Kdf) > 0) {
+    # if (tau == 4) browser()
     Kdf <- Kdf %>% mutate(
       # calculate next lambdas
       lam = (lamL + lamU)/2,
@@ -144,6 +140,7 @@ allocate <- function(df = NULL, K,
       x_tau <- Kdf_lam$x[[1]] # this is the whole point of using Kdf
       stopifnot(length(lam_prev <- unique(Kdf_lam$lam_prev)) == 1) # sanity check
       for (i in 1:N) {
+        # if (i == 5) browser()
         tryCatch({
           if (lam_tau > Lambda0[i]) {
             # then lam gives a negative quantile on i so we allocate nothing at this iteration
@@ -157,16 +154,19 @@ allocate <- function(df = NULL, K,
             # obtain a search interval in which to look for a root of lam_grad
             if (lam_tau < lam_prev) {
               # if lam has decreased we need to look closer to the quantile
-              I <- c(x_tau[i] * (1 - point_mass_window), qs[i])
+              x_tau[i] <- uniroot(
+                f = lam_grad,
+                lower = x_tau[i] * (1 - point_mass_window),
+                upper = x_tau[i] + 1,
+                extendInt = "downX")$root
             } else {
               # and if not we need to look further toward 0
-              I <- c(0, x_tau[i] * (1 + point_mass_window))
+              x_tau[i] <- uniroot(
+                f = lam_grad,
+                lower = 0,
+                upper = 1,
+                extendInt = "downX")$root
             }
-            if (lam_grad(I[1]) * lam_grad(I[2]) < 0) {
-              # then adjust x_tau[i] to that root.
-              x_tau[i] <- uniroot(f = lam_grad, interval = I)$root
-            }
-            # Otherwise leave x_tau[i] unchanged which will cause lam to increase on next step
           }
         }, error = function(e) {
           message(paste(
@@ -297,6 +297,11 @@ weights.allocated <- function(adf) {
 #' Default is to unnest when data from is scored and leave nested
 #' when data frame is scored.
 #' @param id_cols columns to also keep such as model name and origin time
+#' @param rm_score_fun_if_scored remove the scoring function in the xdf list column of a scored
+#'  data frames to save memory; defaults to TRUE since a scoring function is usually not needed for a
+#'  scored data frame.
+#' @param rm_score_fun_if_not_scored defaults to FALSE since a scoring function can be used to
+#' score the data frame.
 #'
 #' @return
 #' @export
@@ -305,20 +310,31 @@ weights.allocated <- function(adf) {
 slim <- function(
     adf,
     xdf_action = c("default", "unnest", "nest"),
-    id_cols = NULL)  {
+    id_cols = NULL,
+    rm_score_fun_if_scored = TRUE,
+    rm_score_fun_if_not_scored = FALSE) {
   # stopifnot("allocated" %in% class(adf))
+  if (!is.null(id_cols)) {
+    adf <- adf %>% dplyr::relocate(id_cols)
+  }
   id_cols <- c(id_cols, "K", "xdf")
   xdf_action <- match.arg(xdf_action)
   if ("scored" %in% class(adf)) {
     out <- adf %>%
       select(tidyselect::any_of(c(
-        "score_raw", "score_oracle", "score", id_cols
+        id_cols, "score_raw", "score_oracle", "score"
       )))
+    if (rm_score_fun_if_scored) {
+      out <- out %>% mutate(xdf = map(xdf, ~select(.,-tidyselect::any_of("score_fun"))))
+    }
     if (xdf_action == "unnest") {
       out <- out %>% tidyr::unnest(xdf)
     }
   } else {
     out <- adf %>% select(tidyselect::any_of(id_cols))
+    if (rm_score_fun_if_not_scored) {
+      out <- out %>% mutate(xdf = map(xdf, ~select(.,-tidyselect::any_of("score_fun"))))
+    }
     if (xdf_action != "nest") {
       out <- out %>% tidyr::unnest(xdf)
     }
