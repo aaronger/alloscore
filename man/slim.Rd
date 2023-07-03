@@ -30,6 +30,9 @@ scored data frame.}
 \item{rm_score_fun_if_not_scored}{defaults to FALSE since a scoring function can be used to
 score the data frame.}
 }
+\value{
+a slim allocated data frame
+}
 \description{
 Make an allocated data frame slim, i.e., containing
 columns only for scores and optionally a list column or unnested

@@ -57,6 +57,7 @@ We can now score for an array of Ks in one step, returning a data frame of list 
 ```{r}
 Ks <- seq(200, 400, by = 10)
 a1 <- alloscore(df = m_lnorm1, y = y, K = Ks)
+a1.10 <- alloscore(df = m_lnorm1, y = y, K = 10, against_oracle = FALSE)
 a2 <- alloscore(df = m_lnorm2, y = y, K = Ks)
 a1$xdf[[2]] # allocations 
 a2$xdf[[2]] # allocations 
@@ -72,25 +73,13 @@ a1_piped %>% select(K, score)
 
 This works by giving the output of `allocate` an `allocated` class attribute and then calling an `alloscore` method for the `allocated` object.  I'm trying to decide whether it makes sense to have a parallel system for oracles or leave oracle comparison in the jury-rigged state it is in now.
 
-The `xs` column contains data frames for each K recording the iteration history of each allocation. I'll try to wrap this into a plot method soon:
+The `xs` column contains data frames for each K recording the iteration history of each allocation,
+and can be plotted with `plot_iterations`.
 
 ```{r}
-# history for K = 69
+# history for K = 280
 (iters9 <- a1$xs[[9]])
-```
-
-
-```{r}
-iters9 %>%  
-  tidyr::pivot_longer(
-    cols = -c(target_names), 
-    names_to = "iteration", 
-    values_to = "allocation") %>% 
-  mutate(
-    iteration = as.numeric(iteration)
-    ) %>% 
-  ggplot(aes(x = iteration, y = allocation, color = target_names)) + 
-  geom_line() + geom_point() + theme_classic()
+plot_iterations(a1, K_to_plot = 280) 
 ```
 
 The weights for each target and the generalized piecewise linear loss functions used for each target and the parameters used to construct them are stored in attributes with getter methods `weights` and `gpl`:
@@ -113,6 +102,7 @@ full_join(
   by = "K"
 )
 ```
+
 ## Working with multiple models and targets
 
 ```{r}
@@ -161,7 +151,7 @@ plot_components(a_series_slim, K = 50,
 For experiments with large `y` samples, scoring as above gets slow and seems like it could create memory shortages, so I added an `alloscore` method for "slim" data frames that avoids copying many gpl function list-columns
 
 ```{r}
-a1_slim <- alloscore(df = m_lnorm1, y = y_series, K = Ks, slim = TRUE)  
+a1_slim <- alloscore(df = m_lnorm1, y = set_names(y, m_lnorm1$target_names), K = Ks, slim = TRUE)  
 ```
 
 
@@ -169,6 +159,7 @@ a1_slim <- alloscore(df = m_lnorm1, y = y_series, K = Ks, slim = TRUE)
 Ks <- seq(10, 1500, by = 10)
 a1_allocated <- m_lnorm1 %>% allocate(K = Ks)
 a1_slim <- slim(a1_allocated)
+N = 10 # make y_gen produce 10 target samples again
 ys <- map(1:50, ~y_gen() %>% set_names(m_lnorm1$target_names))
 a1_slim_scored <- alloscore(a1_slim, ys)
 head(a1_slim_scored)
@@ -189,17 +180,20 @@ p <- a1_scores %>% ggplot() + geom_line(aes(x = K, y = score, group = samp), alp
   p + geom_line(data = density_data, aes(x = x, y = y), color = "red") + theme_bw()
 ```
 
+## Questions about the oracle
 
+These allocations are the same but I'm not sure they should be.  If not, the "post-processing" code in `allocate` would need to somehow use `g`.
 ```{r}
-oa <- oracle_allocate(m_lnorm1, y = y, K = 10:15)
-oa1 <- oracle_allocate(y = y, K = 10:15)
-oa1 <- oracle_allocate(y = y, K = 10, g = "log(1+x)")
+oa <- oracle_allocate(gpl_df = a1_allocated, y = y, K = 10)
+oa1 <- oracle_allocate(gpl_df = a1_allocated, y = y, K = 10, g = "log(1+x)")
 ```
 
-FWIW, the time savings seems like it's around 2/3, but my bet is this will increase as we get into hub analyses...
+## Efficiency of simultaneous K iterations
+
+FWIW, the time savings seems like it's around 4/5, but my bet is this will increase as we get into hub analyses...
 ```{r}
 N <- 50
-m_lnorm2 <- make_m_lnorm(N)
+m_lnorm2 <- make_m_lnorm(N, (1:N)/(N/2), y_mean) 
 Ks <- seq(25, 300, length.out = 100)
 {
 cat("new way: ")

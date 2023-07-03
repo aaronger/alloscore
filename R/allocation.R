@@ -24,9 +24,10 @@ NULL
 #'  deferring to `dg`
 #' @param dg numeric constant(s) or function(s) to calculate the derivative of the
 #'  increment function `g` for each coordinate; defaults to 1 corresponding to pinball loss
-#' @param eps_lam
-#' @param eps_K
-#' @param point_mass_window
+#' @param eps_lam tolerance for ending iteration on lambda
+#' @param eps_K tolerance for post-processing after lambda iteration concludes
+#' @param point_mass_window factor to widen search intervals by in root finding so as to
+#'  catch point-masses in the F's, intended or otherwise
 #'
 #'
 #' @return data frame with (list-)columns
@@ -93,8 +94,10 @@ allocate <- function(df = NULL, K,
 
   # get marginal expected benefits
   Lambda <- meb_gpl_df(df = gpl, F = F, w = w)
-  # store ther values at boundary
+  # store their values at boundary
   Lambda0 <- map2_dbl(Lambda, 0, exec)
+  # take max as an upper bound on lambda
+  lamU0 <- max(Lambda0)
   # set up a data frame to track iterations for all K
   # with columns for binary search interval endpoints at lambda = MEB = 0 (corresponding to
   # allocation at quantile) and the maximum over target set of MEB's evaluated at x = 0
@@ -102,14 +105,14 @@ allocate <- function(df = NULL, K,
   # as well as columns for the current lambda and previous lambda iterates
   Kdf <- tibble(
     K = K,
-    xs = list(gpl %>% select(target_col_name) %>% mutate(`0` = qs)), # for iterations
+    xs = list(gpl %>% select(tidyselect::all_of(target_col_name)) %>% mutate(`0` = qs)), # for iterations
     x = list(tibble::deframe(xs[[1]])), # for final allocation
     qs_OK = map(x, ~sum(w*.)) < K,
     converged = FALSE,
     lamL = 0,
     lamL_seq = list(0),
-    lamU = max(Lambda0)*(1+2*eps_lam),
-    lamU_seq = list(lamU),
+    lamU = lamU0,
+    lamU_seq = list(lamU0),
     lam = 0,
     lam_seq = list(0),
     lam_prev = 0
@@ -127,7 +130,6 @@ allocate <- function(df = NULL, K,
   # create counter for labeling iterates
   tau <- 1
   while (nrow(Kdf) > 0) {
-    # if (tau == 4) browser()
     Kdf <- Kdf %>% mutate(
       # calculate next lambdas
       lam = (lamL + lamU)/2,
@@ -137,10 +139,11 @@ allocate <- function(df = NULL, K,
     lams <- unique(Kdf$lam)
     for (lam_tau in lams) {
       Kdf_lam <- Kdf %>% dplyr::filter(lam == lam_tau)
+      K_lam <- max(Kdf_lam$K)
       x_tau <- Kdf_lam$x[[1]] # this is the whole point of using Kdf
       stopifnot(length(lam_prev <- unique(Kdf_lam$lam_prev)) == 1) # sanity check
       for (i in 1:N) {
-        # if (i == 5) browser()
+        # if (tau == 13 && i == 1) browser()
         tryCatch({
           if (lam_tau > Lambda0[i]) {
             # then lam gives a negative quantile on i so we allocate nothing at this iteration
@@ -151,21 +154,38 @@ allocate <- function(df = NULL, K,
             lam_grad = function(xi) {
               Lambda[[i]](xi) - lam_tau
             }
-            # obtain a search interval in which to look for a root of lam_grad
-            if (lam_tau < lam_prev) {
-              # if lam has decreased we need to look closer to the quantile
-              x_tau[i] <- uniroot(
-                f = lam_grad,
-                lower = x_tau[i] * (1 - point_mass_window),
-                upper = x_tau[i] + 1,
-                extendInt = "downX")$root
+            if (is.finite(x_tau[i])) {
+              # Use x_tau to define search intervals; motivation here is
+              # to make it harder for errors to occur silently
+              if (lam_tau < lam_prev) {
+                # if lam has decreased we need to look closer to the quantile
+                x_tau[i] <- unirootL(
+                  f = lam_grad,
+                  lower = x_tau[i],
+                  upper = K_lam,
+                  point_mass_window = point_mass_window
+                )
+              } else {
+                # and if not we need to look further toward 0
+                x_tau[i] <- unirootL(
+                  f = lam_grad,
+                  lower = 0,
+                  upper = x_tau[i] + point_mass_window,
+                  point_mass_window = point_mass_window
+                )
+              }
             } else {
-              # and if not we need to look further toward 0
-              x_tau[i] <- uniroot(
-                f = lam_grad,
-                lower = 0,
-                upper = 1,
-                extendInt = "downX")$root
+              # if x_tau = Inf (as for alpha = 1) we need to use expanding intervals
+              if (lam_tau < lam_prev) {
+                stop("lambda should not decrease while there are infinite allocations")
+              } else {
+                x_tau[i] <- uniroot(
+                  f = lam_grad,
+                  lower = 0,
+                  upper = K_lam * (1 + point_mass_window),
+                  extendInt = "downX"
+                )$root
+              }
             }
           }
         }, error = function(e) {
@@ -224,20 +244,39 @@ allocate <- function(df = NULL, K,
                  } else {
                    x_L <- x_U <- x
                    iter_num <- ncol(xs) - 2
-                   for (j in 1:iter_num) {
-                     if (j == iter_num + 1) {
-                       stop("Something went very wrong")
+                   for (j in 1:(iter_num + 1)) {
+                     next_xs <- xs[[iter_num - j + 2]]
+                     if (all(is.finite(next_xs)) && j <= iter_num) {
+                       # build expanding neighborhoods of the x where
+                       # the lambda iteration stopped and try to find
+                       # local solution
+                       x_L <- pmin(x_L, next_xs)
+                       x_U <- pmax(x_U, next_xs)
+                       Delta <- function(t) {
+                         sum(w * ((1 - t) * x_L + t * x_U)) - K
+                       }
+                       if ((Delta(0) < 0) & (Delta(1) > 0)) {
+                         t_star <- uniroot(f = Delta, interval = c(0, 1))$root
+                         x <- (1 - t_star) * x_L + t_star * x_U
+                         break
+                       }
+                     } else {
+                       # use the last finite K-violating upper bounds x_U
+                       # to search for a solution all the way back to x = 0;
+                       # constrained oracles will probably always need to
+                       # to do this
+                       Delta <- function(t) {
+                         sum(w * t * x_U) - K
+                       }
+                       if ((Delta(0) < 0) & (Delta(1) > 0)) {
+                         t_star <- uniroot(f = Delta, interval = c(0, 1))$root
+                         x <- t_star * x_U
+                         break
+                       } else {
+                         stop("something went very wrong")
+                       }
                      }
-                     x_L <- pmin(x_L, xs[[iter_num - j + 2]])
-                     x_U <- pmax(x_U, xs[[iter_num - j + 2]])
-                     Delta <- function(t) {
-                       sum(w * ((1 - t) * x_L + t * x_U)) - K
-                     }
-                     if ((Delta(0) < 0) & (Delta(1) > 0))
-                       break
                    }
-                   t_star <- uniroot(f = Delta, interval = c(0, 1))$root
-                   x <- (1 - t_star) * x_L + t_star * x_U
                  }
                }
       return(x)
@@ -280,7 +319,7 @@ gpl <- function(adf) {
 #'
 #' @param adf an allocated data frame
 #'
-#' @return
+#' @return weights used in allocation
 #' @export
 #'
 #' @examples
@@ -303,7 +342,7 @@ weights.allocated <- function(adf) {
 #' @param rm_score_fun_if_not_scored defaults to FALSE since a scoring function can be used to
 #' score the data frame.
 #'
-#' @return
+#' @return a slim allocated data frame
 #' @export
 #'
 #' @examples
@@ -467,7 +506,7 @@ alloscore.allocated <- function(df, y, against_oracle = TRUE) {
 
 #' Score a slim allocated data frame
 #'
-#' @param slim_df
+#' @param slim_df a slim allocated data frame
 #' @param ys a list of named outcome vectors with names matching target names in slim_df
 #'
 #' @return a tibble with columns `xdf` and `scores` containing the components and scores for
@@ -478,7 +517,10 @@ alloscore.allocated <- function(df, y, against_oracle = TRUE) {
 alloscore.slim <- function(slim_df, ys, against_oracle) {
   stopifnot("allocated" %in% class(slim_df))
   if (!is.list(ys)) {ys <- list(ys)}
-  if (!all(purrr::map_lgl(ys, ~ !is.null(names(.)) & identical(names(ys[[1]]), names(.))))) {
+  if (!all(purrr::map_lgl(ys,
+                          ~ !is.null(names(.)) &
+                          identical(names(ys[[1]]), names(.))
+                          ))) {
     stop("ys need to be consistently named by their targets")
   }
   target_col_name <- attr(slim_df, "target_col_name")
@@ -519,6 +561,10 @@ alloscore.slim <- function(slim_df, ys, against_oracle) {
 #'
 #' @examples
 oracle_allocate <- function(gpl_df, y, K, w, ...) {
+  if (inherits(gpl_df, "allocated")) {
+    w <- weights(gpl_df)
+    gpl_df <- gpl(gpl_df)
+  }
   # not dealing with target_name_col identification for now
   gpl_df <- gpl_df %>% select(g:alpha) %>%
     mutate(kappa = alpha, alpha = 1)
@@ -530,6 +576,31 @@ oracle_allocate <- function(gpl_df, y, K, w, ...) {
     K = K,
     eps_lam = .01, # prevent likely unnecessary search steps
     ...))
+}
+
+
+#' Score according to an oracle's knowledge of outcome y
+#'
+#' @param y
+#' @inheritParams alloscore
+#'
+#' @return see `alloscore`
+#'
+#' @examples
+oracle_alloscore <- function(df = NULL, y, K,
+                             kappa = 1, alpha = 1,
+                             g = "x", ...) {
+  stop("Not implemented yet")
+  gpl <- gpl_loss_fun(g, kappa, alpha)
+  oracle_allocate(
+    df = df,
+    y = y,
+    K = K,
+    ...
+  ) %>% mutate(
+    components = map(x, function(x) gpl(x,y)),
+    score = map_dbl(components, sum)
+  )
 }
 
 #' Directly find the oracle allocation with no data management.
@@ -568,30 +639,6 @@ oracle_alloscore_direct <- function(y, K, w, gpl_fns) {
   components_oracle <- pmap_dbl(
     list(gpl_fns, oracle, y), function(fn, o, y) {fn(o, y)})
   return(tibble(oracle = oracle, components_oracle = components_oracle))
-}
-
-#' Score according to an oracle's knowledge of outcome y
-#'
-#' @param y
-#' @inheritParams alloscore
-#'
-#' @return see `alloscore`
-#'
-#' @examples
-oracle_alloscore <- function(df = NULL, y, K,
-                             kappa = 1, alpha = 1,
-                             g = "x", ...) {
-  stop("Not implemented yet")
-  gpl <- gpl_loss_fun(g, kappa, alpha)
-  oracle_allocate(
-    df = df,
-    y = y,
-    K = K,
-    ...
-  ) %>% mutate(
-    components = map(x, function(x) gpl(x,y)),
-    score = map_dbl(components, sum)
-  )
 }
 
 # Alternative approach to dealing with plateaus in allocate; not currently in use

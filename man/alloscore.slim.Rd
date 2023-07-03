@@ -7,6 +7,8 @@
 \method{alloscore}{slim}(slim_df, ys, against_oracle)
 }
 \arguments{
+\item{slim_df}{a slim allocated data frame}
+
 \item{ys}{a list of named outcome vectors with names matching target names in slim_df}
 }
 \value{

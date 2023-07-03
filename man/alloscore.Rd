@@ -54,6 +54,10 @@ deferring to \code{dg}}
 \item{dg}{numeric constant(s) or function(s) to calculate the derivative of the
 increment function \code{g} for each coordinate; defaults to 1 corresponding to pinball loss}
 
+\item{eps_K}{tolerance for post-processing after lambda iteration concludes}
+
+\item{eps_lam}{tolerance for ending iteration on lambda}
+
 \item{against_oracle}{logical; if \code{TRUE}, components and scores relative to oracle are
 included}
 

@@ -46,7 +46,12 @@ deferring to \code{dg}}
 \item{dg}{numeric constant(s) or function(s) to calculate the derivative of the
 increment function \code{g} for each coordinate; defaults to 1 corresponding to pinball loss}
 
-\item{point_mass_window}{}
+\item{eps_lam}{tolerance for ending iteration on lambda}
+
+\item{eps_K}{tolerance for post-processing after lambda iteration concludes}
+
+\item{point_mass_window}{factor to widen search intervals by in root finding so as to
+catch point-masses in the F's, intended or otherwise}
 }
 \value{
 data frame with (list-)columns

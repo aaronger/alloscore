@@ -215,3 +215,28 @@ get_derivative <- function(func) {
   der_func <- function(x) eval(der_expr, envir = list(x = x))
   return(der_func)
 }
+
+#' Find an approximate root for a decreasing function to the left of the root
+#'
+#' @param point_mass_window a distance to move to the left in order to find approximate root
+#'  with non-negative value
+#' @inheritParams stats::uniroot
+#'
+#' @return Either root element of `stats::uniroot` evaluated on `f` or something slightly
+#'  to its left.
+#'
+#' @examples
+unirootL <- function(f, lower, upper, point_mass_window) {
+  u <- uniroot(f = f, upper = upper, lower = lower)
+  if (u$f.root >= 0) {
+    return(u$root)
+  }
+  new_root <- u$root - point_mass_window
+  if (new_root <= lower) {
+    return(lower)
+  }
+  if (f(new_root) < 0) {
+    stop("point mass window too narrow")
+  }
+  return(new_root)
+}

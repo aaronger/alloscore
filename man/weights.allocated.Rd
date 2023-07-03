@@ -9,6 +9,9 @@
 \arguments{
 \item{adf}{an allocated data frame}
 }
+\value{
+weights used in allocation
+}
 \description{
 Get the weights of an allocated data frame
 }

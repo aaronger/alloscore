@@ -421,3 +421,115 @@ normalize_col_names <- function(
   slim_df
 }
 
+#' Plot allocation iteration for a particular K
+#'
+#' @param adf an allocate data frame
+#' @param K_to_plot the constraint level to show iterations for
+#' @param itnum how many iterations to show; default NULL
+#' @param num_targets_to_color
+#' @param target_palette
+#'
+#' @return
+#' @export
+#'
+#' @examples
+plot_iterations <- function(
+    adf,
+    K_to_plot = NULL,
+    itnum = NULL,
+    num_targets_to_color = 6,
+    target_palette = scales::viridis_pal()(num_targets_to_color + 1)) {
+  target_col_name <- attr(adf, "target_col_name")
+
+  if (is.null(K_to_plot)) {
+    if (nrow(adf) == 1) {
+      K_to_plot <- adf$K
+    } else {
+      stop("Need to specify K_to_plot")
+    }
+  } else {
+    if (!K_to_plot %in% adf$K) {
+      stop("K_to_plot not in allocated data frames constraint levels")
+    }
+  }
+  adf <- adf %>% filter(K == K_to_plot)
+  iters <- adf %>% select(K, xs) %>% unnest(xs)
+  if (is.null(itnum)) {
+    itnum <- last(names(iters))
+  }
+
+  lambdas <- adf %>%
+    select(lamL_seq, lamU_seq, lam_seq) %>%
+    unnest(cols = c(lamL_seq, lamU_seq, lam_seq)) %>%
+    mutate(
+      lamL_seq = lag(lamL_seq, 1),
+      lamU_seq = lag(lamU_seq, 1),
+    ) %>%
+    slice(1:(as.numeric(itnum)+1)) %>%
+    mutate(
+      iteration = row_number() - 1,
+      data_type = "lambda")
+
+  targets_to_keep <- iters %>%
+    filter(min_rank(desc(.data[[itnum]])) <= num_targets_to_color) %>%
+    pull({{target_col_name}})
+
+  plot_iter_dat <- iters %>%
+    select(1:.data[[itnum]]) %>%
+    mutate(
+      allo_rank = row_number(desc(.data[[itnum]])), .before = 1) %>%
+    arrange(allo_rank) %>%
+    mutate(
+      Targets = ifelse(allo_rank <= num_targets_to_color, !!sym(target_col_name), "other"),
+      Targets = fct_inorder(Targets),
+      "{target_col_name}" := fct_inorder(!!sym(target_col_name)),
+      .before = 1) %>%
+    tidyr::pivot_longer(
+      cols = -c(1:!!sym(target_col_name)),
+      names_to = "iteration",
+      values_to = "allocation") %>%
+    mutate(iteration = as.numeric(iteration)) %>%
+    mutate(data_type = "allocation")
+
+  Target_nms <- unique(plot_iter_dat$Targets)
+  l <- length(Target_nms)
+
+  # Create a named vector of colors
+  num_targets_to_color2 <- num_targets_to_color - num_targets_to_color %% 2
+  color_shuffle <- num_targets_to_color:1
+  color_shuffle[1:num_targets_to_color2] <-
+    rep(1:(num_targets_to_color2/2), each = 2) + c(0, num_targets_to_color2/2)
+  target_palette <- target_palette[color_shuffle]
+  target_palette[num_targets_to_color + 1] <- "lightgrey"
+  color_palette <- setNames(target_palette, Target_nms)
+
+  p_iter <- plot_iter_dat %>%
+    ggplot() +
+    geom_area(aes(group = !!sym(target_col_name), x = iteration, y = allocation),
+              position = "stack", color = "black", linewidth = .3, fill = NA) +
+    geom_area(aes(group = !!sym(target_col_name), x = iteration, y = allocation,
+                  fill = Targets, alpha = 1-.5*(Targets == "other")),
+              position = "stack") +
+    scale_x_continuous(breaks = 1:as.integer(itnum), expand = c(0, 0), name = NULL) +
+    scale_y_continuous(expand = expansion(mult = c(0, 0.1))) +
+    scale_fill_manual(values = color_palette) + theme_bw() +
+    labs(y = "Allocations") +
+    geom_hline(aes(yintercept = K), alpha = .5) +
+    geom_vline(aes(xintercept = iteration), alpha = .2) +
+    scale_alpha_continuous(guide = "none") +
+    theme(panel.grid.minor.x = element_blank())
+
+  p_lambda <- ggplot(data = lambdas) +
+    geom_line(aes(x = iteration, y = lam_seq)) +
+    geom_ribbon(aes(x = iteration, ymin = lamL_seq, ymax = lamU_seq), alpha = .3) +
+    geom_vline(aes(xintercept = iteration), alpha = .2) +
+    scale_y_continuous(expand = expansion(mult = c(0, 0.1)), name = expression(lambda)) +
+    theme_bw() +
+    scale_x_continuous(breaks = 1:as.integer(itnum), expand = c(0, 0))+
+    theme(panel.grid.minor.x = element_blank())
+
+  require(patchwork)
+  p_iter/p_lambda
+}
+
+
