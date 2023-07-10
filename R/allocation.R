@@ -226,61 +226,14 @@ allocate <- function(df = NULL, K,
                             (abs((sum(w * x) - K) / K) > eps_K) && !qs_OK
                           }))
   out <- out %>% mutate(
-    x = pmap(list(post_processed, x, K, xs, lamU, qs_OK),
-             function(post_processed, x, K, xs, lamU, qs_OK) {
+    x = pmap(list(post_processed, x, K, lam),
+             function(post_processed, x, K, lam) {
                if (post_processed) {
-                 if (lamU <= eps_lam) {
-                   if (sum(w * x) > K) {
-                     stop("strange situation")
-                   }
-                   Delta <- function(t) {
-                     sum(w * t * x) - K
-                   }
-                   t_star <-
-                     uniroot(f = Delta,
-                             interval = c(1, 2),
-                             extendInt = "upX")$root
-                   x <- t_star * x
-                 } else {
-                   x_L <- x_U <- x
-                   iter_num <- ncol(xs) - 2
-                   for (j in 1:(iter_num + 1)) {
-                     next_xs <- xs[[iter_num - j + 2]]
-                     if (all(is.finite(next_xs)) && j <= iter_num) {
-                       # build expanding neighborhoods of the x where
-                       # the lambda iteration stopped and try to find
-                       # local solution
-                       x_L <- pmin(x_L, next_xs)
-                       x_U <- pmax(x_U, next_xs)
-                       Delta <- function(t) {
-                         sum(w * ((1 - t) * x_L + t * x_U)) - K
-                       }
-                       if ((Delta(0) < 0) & (Delta(1) > 0)) {
-                         t_star <- uniroot(f = Delta, interval = c(0, 1))$root
-                         x <- (1 - t_star) * x_L + t_star * x_U
-                         break
-                       }
-                     } else {
-                       # use the last finite K-violating upper bounds x_U
-                       # to search for a solution all the way back to x = 0;
-                       # constrained oracles will probably always need to
-                       # to do this
-                       Delta <- function(t) {
-                         sum(w * t * x_U) - K
-                       }
-                       if ((Delta(0) < 0) & (Delta(1) > 0)) {
-                         t_star <- uniroot(f = Delta, interval = c(0, 1))$root
-                         x <- t_star * x_U
-                         break
-                       } else {
-                         stop("something went very wrong")
-                       }
-                     }
-                   }
-                 }
+                 x <- post_process(x, K, lam, w, Lambda, eps_lam, point_mass_window)
                }
-      return(x)
-    }))
+               return(x)
+             }
+             ))
   # organize
   out <- out %>% select(-c(converged, lam_prev)) %>% arrange(K)
   # create a scorable data frame for each K
@@ -294,9 +247,67 @@ allocate <- function(df = NULL, K,
   return(structure(
     out,
     class = c("allocated", class(out)),
+
     gpl_df = gpl,
     w = w,
     target_col_name = target_col_name))
+}
+
+#' Post process allocations that are infeasible due to plateaus
+#'
+#' @param x last iteration of allocation via lambda search
+#' @param K constraint
+#' @param lam last lambda iterate
+#' @param w weights
+#' @param Lambda meb's
+#' @param eps_lam lambda tolerance that led to lambda convergence failure
+#' @param point_mass_window
+#'
+#' @return
+#' @export
+#'
+#' @examples
+post_process <- function(x, K, lam, w, Lambda, eps_lam, point_mass_window) {
+  if (sum(w * x) > K) {
+    lam_grad_eps <- map(Lambda, ~ function(x) .(x) - lam - eps_lam)
+    x_L <- x_U <- x
+    for (i in 1:length(x)) {
+      if (lam_grad_eps[[i]](0) <= 0) {
+        x_L[i] <- 0
+      } else {
+        x_L[i] <- unirootL(
+          f = lam_grad_eps[[i]],
+          lower = 0,
+          upper = x[i],
+          point_mass_window = point_mass_window
+        )
+      }
+    }
+  } else {
+    lam_grad_eps <- map(Lambda, ~ function(x) .(x) - lam + eps_lam)
+    x_L <- x_U <- x
+    for (i in 1:length(x)) {
+      if (lam_grad_eps[[i]](0) <= 0) {
+        x_U[i] <- x[i]
+      } else {
+        x_U[i] <- uniroot(
+          f = lam_grad_eps[[i]],
+          lower = x[i],
+          upper = x[i] + 1,
+          extendInt = "downX"
+        )$root
+      }
+    }
+  }
+  Delta <- function(t) {
+    sum(w * ((1 - t) * x_L + t * x_U)) - K
+  }
+  if ((Delta(0) < 0) & (Delta(1) > 0)) {
+    t_star <- uniroot(f = Delta, interval = c(0, 1))$root
+    return((1 - t_star) * x_L + t_star * x_U)
+  } else {
+    stop("Post-processing failed")
+  }
 }
 
 #' Get the `gpl_df` attribute of an allocated data frame which containes gpl loss functions
