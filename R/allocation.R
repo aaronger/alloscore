@@ -247,7 +247,6 @@ allocate <- function(df = NULL, K,
   return(structure(
     out,
     class = c("allocated", class(out)),
-
     gpl_df = gpl,
     w = w,
     target_col_name = target_col_name))
@@ -272,15 +271,21 @@ post_process <- function(x, K, lam, w, Lambda, eps_lam, point_mass_window) {
     lam_grad_eps <- map(Lambda, ~ function(x) .(x) - lam - eps_lam)
     x_L <- x_U <- x
     for (i in 1:length(x)) {
-      if (lam_grad_eps[[i]](0) <= 0) {
+      if (lam_grad_eps[[i]](0) <= 0 || x[i] < point_mass_window) {
         x_L[i] <- 0
       } else {
-        x_L[i] <- unirootL(
+        tryCatch({x_L[i] <- unirootL(
           f = lam_grad_eps[[i]],
           lower = 0,
           upper = x[i],
           point_mass_window = point_mass_window
-        )
+        )}, error = function(e) {
+          message(paste(
+            "Error at index =", i,
+            ", K =", K,
+            ": ", e$message))
+          return(NULL)
+        } )
       }
     }
   } else {
@@ -457,7 +462,7 @@ alloscore.default <- function(df = NULL, K, target_names = NA,
     eps_K = eps_K,
     eps_lam = eps_lam
   )
-
+  y <- setNames(y, nm = gpl(a)[[attr(a, "target_col_name")]])
   if (slim) {a <- slim(a)}
 
   return(alloscore(a, y = y, against_oracle = against_oracle))

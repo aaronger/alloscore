@@ -289,8 +289,8 @@ plot_scores_slim <- function(
     order_at_K = NULL,
     order_at_model = NULL,
     order_at_origin_time = NULL,
-    palette = score_palette,
-    linetypes = score_linetypes,
+    palette,
+    linetypes,
     ytot = TRUE
   ) {
   # if (!"scored" %in% class(slim_df)) {
@@ -373,8 +373,12 @@ plot_scores_slim <- function(
       p <- p + facet_grid(rows = vars(model))
     }
   }
-  p <- p + scale_color_manual(values = palette) +
-    scale_linetype_manual(values = linetypes)
+  if (!is_missing(palette)) {
+    p <- p + scale_color_manual(values = palette)
+  }
+  if (!is_missing(linetypes)) {
+    p <- p + scale_linetype_manual(values = linetypes)
+  }
 
   if (ytot) {
     ytot_df <- slim_df %>% group_by(origin_time, model, K) %>%
