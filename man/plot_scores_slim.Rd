@@ -17,8 +17,8 @@ plot_scores_slim(
   order_at_K = NULL,
   order_at_model = NULL,
   order_at_origin_time = NULL,
-  palette = score_palette,
-  linetypes = score_linetypes,
+  palette,
+  linetypes,
   ytot = TRUE
 )
 }

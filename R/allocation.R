@@ -289,18 +289,31 @@ post_process <- function(x, K, lam, w, Lambda, eps_lam, point_mass_window) {
       }
     }
   } else {
-    lam_grad_eps <- map(Lambda, ~ function(x) .(x) - lam + eps_lam)
+    # We want to catch approximate right endpoints of plateaus but this will
+    # not be possible when lam is close to zero (because K large) - i.e., when
+    # we are on the upper tails of the forcasts.
+    # In that case we just look for x_U's larger than x_L's (which finding a root
+    # for lam/2 should accomplish) and let uniroot extend
+    # the t search interval to the right in the final step below involving
+    # Delta.
+    lam_grad_eps <- map(Lambda, ~ function(x) .(x) - max(lam - eps_lam, lam/2))
     x_L <- x_U <- x
     for (i in 1:length(x)) {
       if (lam_grad_eps[[i]](0) <= 0) {
         x_U[i] <- x[i]
       } else {
-        x_U[i] <- uniroot(
+        tryCatch({x_U[i] <- uniroot(
           f = lam_grad_eps[[i]],
           lower = x[i],
           upper = x[i] + 1,
           extendInt = "downX"
-        )$root
+        )$root}, error = function(e) {
+          message(paste(
+            "Error at index =", i,
+            ", K =", K,
+            ": ", e$message))
+          return(NULL)
+        } )
       }
     }
   }
@@ -309,6 +322,9 @@ post_process <- function(x, K, lam, w, Lambda, eps_lam, point_mass_window) {
   }
   if ((Delta(0) < 0) & (Delta(1) > 0)) {
     t_star <- uniroot(f = Delta, interval = c(0, 1))$root
+    return((1 - t_star) * x_L + t_star * x_U)
+  } else if (lam <= 2 * eps_lam) {
+    t_star <- uniroot(f = Delta, interval = c(0, 1), extendInt = "upX")$root
     return((1 - t_star) * x_L + t_star * x_U)
   } else {
     stop("Post-processing failed")
