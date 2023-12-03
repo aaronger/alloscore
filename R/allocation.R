@@ -88,7 +88,7 @@ allocate <- function(df = NULL, K,
   # initialize allocation at q_i if alpha_i < 1 or something big enough to
   # violate constraint if not
   qs <- max(K) * (1 + 2*point_mass_window)
-  if (alpha < 1) {
+  if (any(alpha < 1)) {
     qs <- map2_dbl(Q, alpha, exec)
   }
   # Old initiation code that doesn't seem useful: the algorithm will go to medians
