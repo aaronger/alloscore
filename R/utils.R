@@ -14,7 +14,10 @@ pdqr_factory <- function(..., dist, type,
                          transpars = NULL) {
   pars <- list(...) %>% .[!is.na(.)]
   if (dist == "distfromq") {
-    funfac <- get(paste0("make_", type, "_fn"))
+    if (!requireNamespace("distfromq", quietly = TRUE)) {
+      stop("Package 'distfromq' is required for this feature.")
+    }
+    funfac <- get(paste0("make_", type, "_fn"), envir = asNamespace("distfromq"))
     selected_pars <- pars[intersect(names(formals(funfac)), names(pars))]
     Fun <- exec(funfac, !!!selected_pars)
   } else {
