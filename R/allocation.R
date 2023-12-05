@@ -1,7 +1,8 @@
 #' @importFrom purrr map map2 pmap map_dbl map2_dbl pmap_dbl map_int partial map_lgl pmap_lgl
-#' @importFrom rlang exec is_missing is_list is_function caller_env
+#' @importFrom rlang exec is_missing is_list is_function caller_env set_names
 #' @importFrom dplyr mutate arrange select filter
 #' @importFrom tibble tibble
+#' @importFrom magrittr %>%
 NULL
 
 #' Allocate to minimize expected gpl loss under forecasts F with constraint K
