@@ -162,12 +162,19 @@ allocate <- function(df = NULL, K,
               # to make it harder for errors to occur silently
               if (lam_tau < lam_prev) {
                 # if lam has decreased we need to look closer to the quantile
-                x_tau[i] <- unirootL(
-                  f = lam_grad,
-                  lower = x_tau[i],
-                  upper = K_lam,
-                  point_mass_window = point_mass_window
-                )
+                if (lam_grad(K_lam) > 0) {
+                  # the quantile we're looking for, at level (1 - lam_tau),
+                  # is greater than the upper bound of our search window
+                  # so we just set x_tau[i] to that upper search limit
+                  x_tau[i] <- K_lam
+                } else {
+                  x_tau[i] <- unirootL(
+                    f = lam_grad,
+                    lower = x_tau[i],
+                    upper = K_lam,
+                    point_mass_window = point_mass_window
+                  )
+                }
               } else {
                 # and if not we need to look further toward 0
                 x_tau[i] <- unirootL(
