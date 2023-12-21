@@ -11,7 +11,7 @@ NULL
 #'  those arguments (e.g. `F`) are left empty or give the name of a column of df,
 #'  e.g., `F = "cdf"`
 #' @param K vector of constraints on total provision (cannot be supplied via df)
-#' @target_names vector of names for allocation targets; will default to indices corresponding to
+#' @param target_names vector of names for allocation targets; will default to indices corresponding to
 #'  other vector arguments
 #' @param F list of cdf functions for forecast distributions
 #' @param Q list of quantile functions for forecast distributions
